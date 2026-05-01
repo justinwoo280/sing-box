@@ -6,6 +6,7 @@ on:
       - stable-next
       - main-next
       - dev-next
+      - 1.12.x
     paths-ignore:
       - '**.md'
       - '.github/**'
@@ -15,6 +16,7 @@ on:
       - stable-next
       - main-next
       - dev-next
+      - 1.12.x
 
 jobs:
   build:
