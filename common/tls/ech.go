@@ -51,6 +51,7 @@ func parseECHClientConfig(ctx context.Context, clientConfig ECHCapableConfig, op
 		return &ECHClientConfig{
 			ECHCapableConfig: clientConfig,
 			dnsRouter:        service.FromContext[adapter.DNSRouter](ctx),
+			queryServerName:  options.ECH.QueryServerName,
 		}, nil
 	}
 }
@@ -108,10 +109,21 @@ func parseECHKeys(echKey []byte) ([]tls.EncryptedClientHelloKey, error) {
 
 type ECHClientConfig struct {
 	ECHCapableConfig
-	access     sync.Mutex
-	dnsRouter  adapter.DNSRouter
-	lastTTL    time.Duration
-	lastUpdate time.Time
+	access          sync.Mutex
+	dnsRouter       adapter.DNSRouter
+	queryServerName string
+	lastTTL         time.Duration
+	lastUpdate      time.Time
+}
+
+// queryName returns the FQDN to use for the HTTPS RR ECH config
+// fetch: explicit queryServerName if set, otherwise the TLS
+// server_name (preserving prior default behaviour).
+func (s *ECHClientConfig) queryName() string {
+	if s.queryServerName != "" {
+		return s.queryServerName
+	}
+	return s.ServerName()
 }
 
 func (s *ECHClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) (aTLS.Conn, error) {
@@ -136,7 +148,7 @@ func (s *ECHClientConfig) fetchAndHandshake(ctx context.Context, conn net.Conn) 
 			},
 			Question: []mDNS.Question{
 				{
-					Name:   mDNS.Fqdn(s.ServerName()),
+					Name:   mDNS.Fqdn(s.queryName()),
 					Qtype:  mDNS.TypeHTTPS,
 					Qclass: mDNS.ClassINET,
 				},
@@ -175,7 +187,12 @@ func (s *ECHClientConfig) fetchAndHandshake(ctx context.Context, conn net.Conn) 
 }
 
 func (s *ECHClientConfig) Clone() Config {
-	return &ECHClientConfig{ECHCapableConfig: s.ECHCapableConfig.Clone().(ECHCapableConfig), dnsRouter: s.dnsRouter, lastUpdate: s.lastUpdate}
+	return &ECHClientConfig{
+		ECHCapableConfig: s.ECHCapableConfig.Clone().(ECHCapableConfig),
+		dnsRouter:        s.dnsRouter,
+		queryServerName:  s.queryServerName,
+		lastUpdate:       s.lastUpdate,
+	}
 }
 
 func UnmarshalECHKeys(raw []byte) ([]tls.EncryptedClientHelloKey, error) {
