@@ -218,7 +218,16 @@ type OutboundECHOptions struct {
 	Enabled         bool                       `json:"enabled,omitempty"`
 	Config          badoption.Listable[string] `json:"config,omitempty"`
 	ConfigPath      string                     `json:"config_path,omitempty"`
-	QueryServerName string                     `json:"query_server_name,omitempty"`
+	// QueryServerName is the FQDN used to fetch the ECH configuration
+	// list via a DNS HTTPS RR query when neither Config nor ConfigPath
+	// is supplied. If left empty, the TLS server_name is used.
+	//
+	// Setting this lets the user decouple the inner SNI (the real
+	// origin name they want to reach, set in `tls.server_name`) from
+	// the public name whose HTTPS RR carries the ECH key material —
+	// useful when the ECH frontend is hosted on a different domain
+	// from the inner origin (e.g. a CDN-fronted deployment).
+	QueryServerName string `json:"query_server_name,omitempty"`
 
 	// Deprecated: not supported by stdlib
 	PQSignatureSchemesEnabled bool `json:"pq_signature_schemes_enabled,omitempty"`
