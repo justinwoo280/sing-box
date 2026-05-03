@@ -29,11 +29,11 @@ func GenerateKeyPair(parent *x509.Certificate, parentKey any, timeFunc func() ti
 func GenerateCertificate(parent *x509.Certificate, parentKey any, timeFunc func() time.Time, serverName string, expire time.Time) (privateKeyPem []byte, publicKeyPem []byte, err error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return
+		return privateKeyPem, publicKeyPem, err
 	}
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
-		return
+		return privateKeyPem, publicKeyPem, err
 	}
 	template := &x509.Certificate{
 		SerialNumber:          serialNumber,
@@ -53,13 +53,13 @@ func GenerateCertificate(parent *x509.Certificate, parentKey any, timeFunc func(
 	}
 	publicDer, err := x509.CreateCertificate(rand.Reader, template, parent, key.Public(), parentKey)
 	if err != nil {
-		return
+		return privateKeyPem, publicKeyPem, err
 	}
 	privateDer, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
-		return
+		return privateKeyPem, publicKeyPem, err
 	}
 	publicKeyPem = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: publicDer})
 	privateKeyPem = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDer})
-	return
+	return privateKeyPem, publicKeyPem, err
 }

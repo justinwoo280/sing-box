@@ -5,7 +5,6 @@ package tls
 import (
 	"context"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/pem"
 	"net"
 	"os"
@@ -159,21 +158,21 @@ func (s *ECHClientConfig) fetchAndHandshake(ctx context.Context, conn net.Conn) 
 			switch resource := rr.(type) {
 			case *mDNS.HTTPS:
 				for _, value := range resource.Value {
-					if value.Key().String() == "ech" {
-						echConfigList, err := base64.StdEncoding.DecodeString(value.String())
-						if err != nil {
-							return nil, E.Cause(err, "decode ECH config")
+					if echValue, ok := value.(*mDNS.SVCBECHConfig); ok {
+						ttl := time.Duration(rr.Header().Ttl) * time.Second
+						if ttl < 30*time.Second {
+							ttl = 30 * time.Second
 						}
-						s.lastTTL = time.Duration(rr.Header().Ttl) * time.Second
+						s.lastTTL = ttl
 						s.lastUpdate = time.Now()
-						s.SetECHConfigList(echConfigList)
+						s.SetECHConfigList(echValue.ECH)
 						break match
 					}
 				}
 			}
 		}
 		if len(s.ECHConfigList()) == 0 {
-			return nil, E.New("no ECH config found in DNS records")
+			return nil, E.New("no ECH config found in DNS HTTPS RR for ", queryServerName)
 		}
 	}
 	return s.Client(conn)
@@ -184,6 +183,7 @@ func (s *ECHClientConfig) Clone() Config {
 		ECHCapableConfig: s.ECHCapableConfig.Clone().(ECHCapableConfig),
 		dnsRouter:        s.dnsRouter,
 		queryServerName:  s.queryServerName,
+		lastTTL:          s.lastTTL,
 		lastUpdate:       s.lastUpdate,
 	}
 }

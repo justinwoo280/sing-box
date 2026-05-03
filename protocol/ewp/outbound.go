@@ -38,8 +38,8 @@ type Outbound struct {
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger,
-	tag string, options option.EWPOutboundOptions) (adapter.Outbound, error) {
-
+	tag string, options option.EWPOutboundOptions,
+) (adapter.Outbound, error) {
 	outboundDialer, err := dialer.New(ctx, options.DialerOptions, options.ServerIsDomain())
 	if err != nil {
 		return nil, err
