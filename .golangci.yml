@@ -17,6 +17,16 @@ linters:
     - paralleltest
     - staticcheck
   settings:
+    govet:
+      # 'inline' is a heuristic in govet (golangci-lint v2.12+) that
+      # flags calls to generic stdlib helpers like slices.Equal because
+      # the Go compiler does not yet inline functions whose type
+      # parameters must be inferred from arguments. The reports are
+      # informational ("waiting on the compiler"), not bugs in our
+      # code, and they show up in third-party-style files we vendor
+      # (e.g. common/ja3/ja3.go). Disable to keep CI signal useful.
+      disable:
+        - inline
     staticcheck:
       checks:
         - all
