@@ -17,11 +17,11 @@ type ECHCapableConfig interface {
 func ECHKeygenDefault(publicName string) (configPem string, keyPem string, err error) {
 	echKey, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
-		return
+		return configPem, keyPem, err
 	}
 	echConfig, err := marshalECHConfig(0, echKey.PublicKey().Bytes(), publicName, 0)
 	if err != nil {
-		return
+		return configPem, keyPem, err
 	}
 	configBuilder := cryptobyte.NewBuilder(nil)
 	configBuilder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
@@ -29,7 +29,7 @@ func ECHKeygenDefault(publicName string) (configPem string, keyPem string, err e
 	})
 	configBytes, err := configBuilder.Bytes()
 	if err != nil {
-		return
+		return configPem, keyPem, err
 	}
 	keyBuilder := cryptobyte.NewBuilder(nil)
 	keyBuilder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
@@ -40,11 +40,11 @@ func ECHKeygenDefault(publicName string) (configPem string, keyPem string, err e
 	})
 	keyBytes, err := keyBuilder.Bytes()
 	if err != nil {
-		return
+		return configPem, keyPem, err
 	}
 	configPem = string(pem.EncodeToMemory(&pem.Block{Type: "ECH CONFIGS", Bytes: configBytes}))
 	keyPem = string(pem.EncodeToMemory(&pem.Block{Type: "ECH KEYS", Bytes: keyBytes}))
-	return
+	return configPem, keyPem, err
 }
 
 func marshalECHConfig(id uint8, pubKey []byte, publicName string, maxNameLen uint8) ([]byte, error) {

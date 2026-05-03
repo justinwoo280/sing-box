@@ -3,6 +3,7 @@ package ewp
 import (
 	"context"
 	"net"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/inbound"
@@ -23,6 +24,20 @@ import (
 	sewp "github.com/justinwoo280/sing-ewp"
 )
 
+// ewpHandshakeTimeout caps how long an inbound peer may take to
+// complete the EWP v2 handshake (ClientHello → ServerHello →
+// optionally the first UDP_NEW frame for UDP commands). After this
+// the underlying transport is force-closed.
+//
+// Tuning notes:
+//   - The wire-level handshake itself is one round trip plus an
+//     ML-KEM-768 keygen+encap on the server, which on commodity
+//     hardware completes well under 100ms even under load.
+//   - We pad generously to 10s to absorb high-RTT mobile networks
+//     and the worst-case TLS / WS / gRPC handshake that may sit
+//     beneath EWP, while still cutting off slow-loris peers.
+const ewpHandshakeTimeout = 10 * time.Second
+
 func RegisterInbound(registry *inbound.Registry) {
 	inbound.Register[option.EWPInboundOptions](registry, C.TypeEWP, NewInbound)
 }
@@ -42,8 +57,8 @@ type Inbound struct {
 }
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger,
-	tag string, options option.EWPInboundOptions) (adapter.Inbound, error) {
-
+	tag string, options option.EWPInboundOptions,
+) (adapter.Inbound, error) {
 	in := &Inbound{
 		Adapter: inbound.NewAdapter(C.TypeEWP, tag),
 		ctx:     ctx,
@@ -135,8 +150,8 @@ func (h *Inbound) Close() error {
 // configured) then hand off to the EWP service for handshake +
 // dispatch.
 func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn,
-	metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
-
+	metadata adapter.InboundContext, onClose N.CloseHandlerFunc,
+) {
 	if h.tlsConfig != nil && h.transport == nil {
 		tlsConn, err := tls.ServerHandshake(ctx, conn, h.tlsConfig)
 		if err != nil {
@@ -150,7 +165,17 @@ func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn,
 	// Stash the inbound metadata in ctx so the EWP handler can read
 	// it back when dispatching to the router.
 	ctx = adapter.WithContext(ctx, &metadata)
-	if err := h.service.HandleConn(ctx, conn); err != nil {
+
+	// Bound the handshake itself with a deadline so a peer that opens
+	// a TCP/TLS connection but never sends a complete ClientHello
+	// cannot tie up server resources indefinitely. sing-ewp's
+	// Service.HandleConn forwards a ctx deadline onto the underlying
+	// transport via SetDeadline (and clears it once the handler
+	// takes over), so we only need to attach the deadline here.
+	hsCtx, cancel := context.WithTimeout(ctx, ewpHandshakeTimeout)
+	defer cancel()
+
+	if err := h.service.HandleConn(hsCtx, conn); err != nil {
 		N.CloseOnHandshakeFailure(conn, onClose, err)
 		h.logger.ErrorContext(ctx, E.Cause(err, "process connection from ", metadata.Source))
 		return
@@ -193,20 +218,20 @@ func (h *inboundHandler) NewPacketConnection(ctx context.Context, pc net.PacketC
 // baseMetadata fills in inbound tag/type and copies any pre-existing
 // fields (Source, InboundDetour, InboundOptions) propagated from the
 // listener.
-func (in *Inbound) baseMetadata(parent *adapter.InboundContext) adapter.InboundContext {
+func (h *Inbound) baseMetadata(parent *adapter.InboundContext) adapter.InboundContext {
 	var md adapter.InboundContext
 	if parent != nil {
 		md = *parent
 	}
-	md.Inbound = in.Tag()
-	md.InboundType = in.Type()
+	md.Inbound = h.Tag()
+	md.InboundType = h.Type()
 	return md
 }
 
 // userName returns the configured Name for the given UUID, falling back
 // to a hex digest of the UUID if no Name was set.
-func (in *Inbound) userName(uuid [sewp.UUIDLen]byte) string {
-	for _, u := range in.users {
+func (h *Inbound) userName(uuid [sewp.UUIDLen]byte) string {
+	for _, u := range h.users {
 		uu, err := sewp.ParseUUID(u.UUID)
 		if err == nil && uu == uuid {
 			if u.Name != "" {
@@ -228,7 +253,8 @@ var _ adapter.V2RayServerTransportHandler = (*inboundTransportHandler)(nil)
 type inboundTransportHandler Inbound
 
 func (h *inboundTransportHandler) NewConnectionEx(ctx context.Context, conn net.Conn,
-	source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+	source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc,
+) {
 	var metadata adapter.InboundContext
 	metadata.Source = source
 	metadata.Destination = destination
