@@ -52,11 +52,6 @@ type HTTPRequest interface {
 type HTTPResponse interface {
 	GetContent() (*StringBox, error)
 	WriteTo(path string) error
-	WriteToWithProgress(path string, handler HTTPResponseWriteToProgressHandler) error
-}
-
-type HTTPResponseWriteToProgressHandler interface {
-	Update(progress int64, total int64)
 }
 
 var (
@@ -82,27 +77,22 @@ func NewHTTPClient() HTTPClient {
 }
 
 func (c *httpClient) ModernTLS() {
-	c.setTLSVersion(tls.VersionTLS12, 0, func(suite *tls.CipherSuite) bool { return true })
+	c.tls.MinVersion = tls.VersionTLS12
+	c.tls.CipherSuites = common.Map(tls.CipherSuites(), func(it *tls.CipherSuite) uint16 { return it.ID })
 }
 
 func (c *httpClient) RestrictedTLS() {
-	c.setTLSVersion(tls.VersionTLS13, 0, func(suite *tls.CipherSuite) bool {
-		return common.Contains(suite.SupportedVersions, uint16(tls.VersionTLS13))
-	})
-}
-
-func (c *httpClient) setTLSVersion(minVersion, maxVersion uint16, filter func(*tls.CipherSuite) bool) {
-	c.tls.MinVersion = minVersion
-	if maxVersion != 0 {
-		c.tls.MaxVersion = maxVersion
-	}
-	c.tls.CipherSuites = common.Map(common.Filter(tls.CipherSuites(), filter), func(it *tls.CipherSuite) uint16 {
+	c.tls.MinVersion = tls.VersionTLS13
+	c.tls.CipherSuites = common.Map(common.Filter(tls.CipherSuites(), func(it *tls.CipherSuite) bool {
+		return common.Contains(it.SupportedVersions, uint16(tls.VersionTLS13))
+	}), func(it *tls.CipherSuite) uint16 {
 		return it.ID
 	})
 }
 
 func (c *httpClient) PinnedTLS12() {
-	c.setTLSVersion(tls.VersionTLS12, tls.VersionTLS12, func(suite *tls.CipherSuite) bool { return true })
+	c.tls.MinVersion = tls.VersionTLS12
+	c.tls.MaxVersion = tls.VersionTLS12
 }
 
 func (c *httpClient) PinnedSHA256(sumHex string) {
@@ -188,7 +178,9 @@ func (r *httpRequest) SetUserAgent(userAgent string) {
 }
 
 func (r *httpRequest) SetContent(content []byte) {
-	r.request.Body = io.NopCloser(bytes.NewReader(content))
+	buffer := bytes.Buffer{}
+	buffer.Write(content)
+	r.request.Body = io.NopCloser(bytes.NewReader(buffer.Bytes()))
 	r.request.ContentLength = int64(len(content))
 }
 
@@ -243,32 +235,4 @@ func (h *httpResponse) WriteTo(path string) error {
 	}
 	defer file.Close()
 	return common.Error(bufio.Copy(file, h.Body))
-}
-
-func (h *httpResponse) WriteToWithProgress(path string, handler HTTPResponseWriteToProgressHandler) error {
-	defer h.Body.Close()
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return common.Error(bufio.Copy(&progressWriter{
-		writer:  file,
-		handler: handler,
-		total:   h.ContentLength,
-	}, h.Body))
-}
-
-type progressWriter struct {
-	writer  io.Writer
-	handler HTTPResponseWriteToProgressHandler
-	total   int64
-	written int64
-}
-
-func (w *progressWriter) Write(p []byte) (int, error) {
-	n, err := w.writer.Write(p)
-	w.written += int64(n)
-	w.handler.Update(w.written, w.total)
-	return n, err
 }

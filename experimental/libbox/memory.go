@@ -4,23 +4,20 @@ import (
 	"math"
 	runtimeDebug "runtime/debug"
 
-	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/common/conntrack"
 )
 
-var memoryLimitEnabled bool
-
 func SetMemoryLimit(enabled bool) {
-	memoryLimitEnabled = enabled
-	const memoryLimitGo = 45 * 1024 * 1024
+	const memoryLimit = 45 * 1024 * 1024
+	const memoryLimitGo = memoryLimit / 1.5
 	if enabled {
 		runtimeDebug.SetGCPercent(10)
-		if C.IsIos {
-			runtimeDebug.SetMemoryLimit(memoryLimitGo)
-		}
+		runtimeDebug.SetMemoryLimit(memoryLimitGo)
+		conntrack.KillerEnabled = true
+		conntrack.MemoryLimit = memoryLimit
 	} else {
 		runtimeDebug.SetGCPercent(100)
-		if C.IsIos {
-			runtimeDebug.SetMemoryLimit(math.MaxInt64)
-		}
+		runtimeDebug.SetMemoryLimit(math.MaxInt64)
+		conntrack.KillerEnabled = false
 	}
 }
