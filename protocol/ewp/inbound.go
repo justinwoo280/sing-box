@@ -51,7 +51,7 @@ type Inbound struct {
 	logger    logger.ContextLogger
 	listener  *listener.Listener
 	users     []option.EWPUser
-	service   *sewp.Service
+	service   ewpService
 	tlsConfig tls.ServerConfig
 	transport adapter.V2RayServerTransport
 }
@@ -66,8 +66,20 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		logger:  logger,
 		users:   options.Users,
 	}
-	// Build the EWP v2 service and register all configured users.
-	in.service = sewp.NewService(&inboundHandler{owner: in})
+	// Build the EWP service and register all configured users.
+	// If a server static identity is configured, use the v2.1 service
+	// (binds the handshake to the server's long-term identity, closing
+	// audit findings S1 / S2 / H2). Otherwise fall back to the
+	// legacy v2.0 service for backwards compatibility.
+	if options.ServerStaticPrivateKey != "" {
+		v21Service, err := sewp.NewServiceV21(&inboundHandler{owner: in}, options.ServerStaticPrivateKey)
+		if err != nil {
+			return nil, E.Cause(err, "create EWP/v2.1 service")
+		}
+		in.service = v21Service
+	} else {
+		in.service = sewp.NewService(&inboundHandler{owner: in})
+	}
 	for i, u := range options.Users {
 		if err := in.service.AddUser(u.UUID); err != nil {
 			return nil, E.Cause(err, "user[", i, "] (", u.Name, ") UUID")
