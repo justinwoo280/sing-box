@@ -29,8 +29,15 @@ PROJECT=$(cd "$(dirname "$0")/.."; pwd)
 # Convert version to APK format:
 #   1.13.0-beta.8  -> 1.13.0_beta8-r0
 #   1.13.0-rc.3    -> 1.13.0_rc3-r0
+#   1.13.0-mod.1   -> 1.13.0_p1-r0      (mod is not in the APK
+#                                        suffix whitelist; map to
+#                                        'p' which means "patch /
+#                                        post-release", semantically
+#                                        equivalent to a downstream
+#                                        modification)
 #   1.13.0         -> 1.13.0-r0
-APK_VERSION=$(echo "$VERSION" | sed -E 's/-([a-z]+)\.([0-9]+)/_\1\2/')
+APK_VERSION=$(echo "$VERSION" | sed -E 's/-mod\.([0-9]+)/_p\1/')
+APK_VERSION=$(echo "$APK_VERSION" | sed -E 's/-([a-z]+)\.([0-9]+)/_\1\2/')
 APK_VERSION="${APK_VERSION}-r0"
 
 ROOT_DIR=$(mktemp -d)
