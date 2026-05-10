@@ -3,20 +3,20 @@ name: Lint
 on:
   push:
     branches:
-      - oldstable
-      - stable
-      - testing
-      - unstable
+      - stable-next
+      - main-next
+      - dev-next
+      - 1.12.x
     paths-ignore:
       - '**.md'
       - '.github/**'
       - '!.github/workflows/lint.yml'
   pull_request:
     branches:
-      - oldstable
-      - stable
-      - testing
-      - unstable
+      - stable-next
+      - main-next
+      - dev-next
+      - 1.12.x
 
 jobs:
   build:
@@ -30,7 +30,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25
+          go-version: ~1.24.10
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
