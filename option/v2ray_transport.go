@@ -15,6 +15,7 @@ type _V2RayTransportOptions struct {
 	QUICOptions        V2RayQUICOptions        `json:"-"`
 	GRPCOptions        V2RayGRPCOptions        `json:"-"`
 	HTTPUpgradeOptions V2RayHTTPUpgradeOptions `json:"-"`
+	XHTTPOptions       V2RayXHTTPOptions       `json:"-"`
 }
 
 type V2RayTransportOptions _V2RayTransportOptions
@@ -32,6 +33,8 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 		v = o.GRPCOptions
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = o.HTTPUpgradeOptions
+	case C.V2RayTransportTypeXHTTP:
+		v = o.XHTTPOptions
 	case "":
 		return nil, E.New("missing transport type")
 	default:
@@ -57,6 +60,8 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
 		v = &o.GRPCOptions
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = &o.HTTPUpgradeOptions
+	case C.V2RayTransportTypeXHTTP:
+		v = &o.XHTTPOptions
 	default:
 		return E.New("unknown transport type: " + o.Type)
 	}
@@ -97,4 +102,49 @@ type V2RayHTTPUpgradeOptions struct {
 	Host    string               `json:"host,omitempty"`
 	Path    string               `json:"path,omitempty"`
 	Headers badoption.HTTPHeader `json:"headers,omitempty"`
+}
+
+// V2RayXHTTPOptions mirrors the (subset of) Xray xhttp transport config we
+// support via github.com/justinwoo280/sing-xhttp.
+type V2RayXHTTPOptions struct {
+	Mode    string               `json:"mode,omitempty"`    // "packet-up" (default) | "stream-up"
+	Host    string               `json:"host,omitempty"`
+	Path    string               `json:"path,omitempty"`
+	Method  string               `json:"method,omitempty"`
+	Headers badoption.HTTPHeader `json:"headers,omitempty"`
+
+	NoGRPCHeader bool `json:"no_grpc_header,omitempty"`
+	NoSSEHeader  bool `json:"no_sse_header,omitempty"`
+
+	XPaddingBytes        *XHTTPRange `json:"x_padding_bytes,omitempty"`
+	ScMaxEachPostBytes   *XHTTPRange `json:"sc_max_each_post_bytes,omitempty"`
+	ScMaxBufferedPosts   int32       `json:"sc_max_buffered_posts,omitempty"`
+	ScMinPostsIntervalMs *XHTTPRange `json:"sc_min_posts_interval_ms,omitempty"`
+	ScStreamUpServerSecs *XHTTPRange `json:"sc_stream_up_server_secs,omitempty"`
+
+	XPaddingObfsMode  bool   `json:"x_padding_obfs_mode,omitempty"`
+	XPaddingPlacement string `json:"x_padding_placement,omitempty"`
+	XPaddingKey       string `json:"x_padding_key,omitempty"`
+	XPaddingHeader    string `json:"x_padding_header,omitempty"`
+	XPaddingMethod    string `json:"x_padding_method,omitempty"`
+
+	SessionPlacement string `json:"session_placement,omitempty"`
+	SessionKey       string `json:"session_key,omitempty"`
+	SeqPlacement     string `json:"seq_placement,omitempty"`
+	SeqKey           string `json:"seq_key,omitempty"`
+
+	Xmux *XHTTPXmuxConfig `json:"xmux,omitempty"`
+}
+
+type XHTTPRange struct {
+	From int32 `json:"from,omitempty"`
+	To   int32 `json:"to,omitempty"`
+}
+
+type XHTTPXmuxConfig struct {
+	MaxConcurrency   *XHTTPRange `json:"max_concurrency,omitempty"`
+	MaxConnections   *XHTTPRange `json:"max_connections,omitempty"`
+	CMaxReuseTimes   *XHTTPRange `json:"c_max_reuse_times,omitempty"`
+	HMaxRequestTimes *XHTTPRange `json:"h_max_request_times,omitempty"`
+	HMaxReusableSecs *XHTTPRange `json:"h_max_reusable_secs,omitempty"`
 }
