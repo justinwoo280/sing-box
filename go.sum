@@ -106,8 +106,8 @@ github.com/jsimonetti/rtnetlink v1.4.0 h1:Z1BF0fRgcETPEa0Kt0MRk3yV5+kF1FWTni6KUF
 github.com/jsimonetti/rtnetlink v1.4.0/go.mod h1:5W1jDvWdnthFJ7fxYX1GMK07BUpI4oskfOqvPteYS6E=
 github.com/justinwoo280/sing-ewp v0.2.2 h1:Ou5ZleVhAcTaoeLdVLyFXJ/KiYW3d+ijNv6AcwmTt+g=
 github.com/justinwoo280/sing-ewp v0.2.2/go.mod h1:uE/pQEesc1ZeTVFNF/N3FIIl8WOiMglAVbZHc+kCAx4=
-github.com/justinwoo280/sing-xhttp v0.0.0-20260530170421-70ed48e82235 h1:Jd783fIVxfN1HmSpWYltW5EE7eWjctpg0lXs/YT9CEw=
-github.com/justinwoo280/sing-xhttp v0.0.0-20260530170421-70ed48e82235/go.mod h1:2vhrXf+3rmOrH/70TUtgBSD6JsJS2FTqkm4qm7woH5s=
+github.com/justinwoo280/sing-xhttp v0.0.0-20260531084226-8be0a0f52d20 h1:PrA0Sp0V6NcDP7MKyfi7LMATve7EhpUtTI46OzLQXjo=
+github.com/justinwoo280/sing-xhttp v0.0.0-20260531084226-8be0a0f52d20/go.mod h1:2vhrXf+3rmOrH/70TUtgBSD6JsJS2FTqkm4qm7woH5s=
 github.com/keybase/go-keychain v0.0.1 h1:way+bWYa6lDppZoZcgMbYsvC7GxljxrskdNInRtuthU=
 github.com/keybase/go-keychain v0.0.1/go.mod h1:PdEILRW3i9D8JcdM+FmY6RwkHGnhHxXwkPPMeUgOK1k=
 github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=

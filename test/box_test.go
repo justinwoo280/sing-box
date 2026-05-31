@@ -26,7 +26,13 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	// sing-ewp's ReplayCache spawns a per-Service GC goroutine that the
+	// library intentionally leaves running for process-lifetime services
+	// (see anti_replay.go: "for a process-lifetime Service this is
+	// optional"). It's harmless but trips goleak; ignore it explicitly.
+	goleak.VerifyTestMain(m,
+		goleak.IgnoreAnyFunction("github.com/justinwoo280/sing-ewp.(*ReplayCache).gcLoop"),
+	)
 }
 
 var globalCtx context.Context
