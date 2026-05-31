@@ -81,6 +81,7 @@ func convertXHTTPXmux(m *option.XHTTPXmuxConfig) *xhttp.XmuxConfig {
 		CMaxReuseTimes:   convertXHTTPRange(m.CMaxReuseTimes),
 		HMaxRequestTimes: convertXHTTPRange(m.HMaxRequestTimes),
 		HMaxReusableSecs: convertXHTTPRange(m.HMaxReusableSecs),
+		HKeepAlivePeriod: m.HKeepAlivePeriod,
 	}
 }
 

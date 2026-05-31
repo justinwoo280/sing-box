@@ -147,4 +147,5 @@ type XHTTPXmuxConfig struct {
 	CMaxReuseTimes   *XHTTPRange `json:"c_max_reuse_times,omitempty"`
 	HMaxRequestTimes *XHTTPRange `json:"h_max_request_times,omitempty"`
 	HMaxReusableSecs *XHTTPRange `json:"h_max_reusable_secs,omitempty"`
+	HKeepAlivePeriod int32       `json:"h_keep_alive_period,omitempty"`
 }

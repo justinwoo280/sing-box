@@ -61,7 +61,7 @@ require (
 	howett.net/plist v1.0.1
 )
 
-require github.com/justinwoo280/sing-xhttp v0.0.0-20260525140427-fd5f086d8f6b
+require github.com/justinwoo280/sing-xhttp v0.0.0-20260530170421-70ed48e82235
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
