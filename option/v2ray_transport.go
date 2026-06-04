@@ -1,6 +1,11 @@
 package option
 
 import (
+	"net/http"
+	"net/url"
+	"strings"
+
+	Xbadoption "github.com/sagernet/sing-box/common/xray/json/badoption"
 	C "github.com/sagernet/sing-box/constant"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
@@ -104,48 +109,138 @@ type V2RayHTTPUpgradeOptions struct {
 	Headers badoption.HTTPHeader `json:"headers,omitempty"`
 }
 
-// V2RayXHTTPOptions mirrors the (subset of) Xray xhttp transport config we
-// support via github.com/justinwoo280/sing-xhttp.
+type V2RayXHTTPBaseOptions struct {
+	Mode                 string                 `json:"mode"`
+	Host                 string                 `json:"host,omitempty"`
+	Path                 string                 `json:"path,omitempty"`
+	Headers              map[string]string      `json:"headers,omitempty"`
+	DomainStrategy       DomainStrategy         `json:"domain_strategy,omitempty"`
+	XPaddingBytes        Xbadoption.Range       `json:"x_padding_bytes"`
+	NoGRPCHeader         bool                   `json:"no_grpc_header,omitempty"`
+	NoSSEHeader          bool                   `json:"no_sse_header,omitempty"`
+	ScMaxEachPostBytes   Xbadoption.Range       `json:"sc_max_each_post_bytes"`
+	ScMinPostsIntervalMs Xbadoption.Range       `json:"sc_min_posts_interval_ms"`
+	ScMaxBufferedPosts   int64                  `json:"sc_max_buffered_posts,omitempty"`
+	ScStreamUpServerSecs Xbadoption.Range       `json:"sc_stream_up_server_secs"`
+	Xmux                 *V2RayXHTTPXmuxOptions `json:"xmux"`
+}
+
 type V2RayXHTTPOptions struct {
-	Mode    string               `json:"mode,omitempty"`    // "packet-up" (default) | "stream-up"
-	Host    string               `json:"host,omitempty"`
-	Path    string               `json:"path,omitempty"`
-	Method  string               `json:"method,omitempty"`
-	Headers badoption.HTTPHeader `json:"headers,omitempty"`
-
-	NoGRPCHeader bool `json:"no_grpc_header,omitempty"`
-	NoSSEHeader  bool `json:"no_sse_header,omitempty"`
-
-	XPaddingBytes        *XHTTPRange `json:"x_padding_bytes,omitempty"`
-	ScMaxEachPostBytes   *XHTTPRange `json:"sc_max_each_post_bytes,omitempty"`
-	ScMaxBufferedPosts   int32       `json:"sc_max_buffered_posts,omitempty"`
-	ScMinPostsIntervalMs *XHTTPRange `json:"sc_min_posts_interval_ms,omitempty"`
-	ScStreamUpServerSecs *XHTTPRange `json:"sc_stream_up_server_secs,omitempty"`
-
-	XPaddingObfsMode  bool   `json:"x_padding_obfs_mode,omitempty"`
-	XPaddingPlacement string `json:"x_padding_placement,omitempty"`
-	XPaddingKey       string `json:"x_padding_key,omitempty"`
-	XPaddingHeader    string `json:"x_padding_header,omitempty"`
-	XPaddingMethod    string `json:"x_padding_method,omitempty"`
-
-	SessionPlacement string `json:"session_placement,omitempty"`
-	SessionKey       string `json:"session_key,omitempty"`
-	SeqPlacement     string `json:"seq_placement,omitempty"`
-	SeqKey           string `json:"seq_key,omitempty"`
-
-	Xmux *XHTTPXmuxConfig `json:"xmux,omitempty"`
+	V2RayXHTTPBaseOptions
+	Download *V2RayXHTTPDownloadOptions `json:"download"`
 }
 
-type XHTTPRange struct {
-	From int32 `json:"from,omitempty"`
-	To   int32 `json:"to,omitempty"`
+type V2RayXHTTPDownloadOptions struct {
+	V2RayXHTTPBaseOptions
+	ServerOptions
+	OutboundTLSOptionsContainer
+	Detour string `json:"detour,omitempty"`
 }
 
-type XHTTPXmuxConfig struct {
-	MaxConcurrency   *XHTTPRange `json:"max_concurrency,omitempty"`
-	MaxConnections   *XHTTPRange `json:"max_connections,omitempty"`
-	CMaxReuseTimes   *XHTTPRange `json:"c_max_reuse_times,omitempty"`
-	HMaxRequestTimes *XHTTPRange `json:"h_max_request_times,omitempty"`
-	HMaxReusableSecs *XHTTPRange `json:"h_max_reusable_secs,omitempty"`
-	HKeepAlivePeriod int32       `json:"h_keep_alive_period,omitempty"`
+func (c *V2RayXHTTPBaseOptions) GetNormalizedPath() string {
+	pathAndQuery := strings.SplitN(c.Path, "?", 2)
+	path := pathAndQuery[0]
+	if path == "" || path[0] != '/' {
+		path = "/" + path
+	}
+	if path[len(path)-1] != '/' {
+		path = path + "/"
+	}
+	return path
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedQuery() string {
+	pathAndQuery := strings.SplitN(c.Path, "?", 2)
+	query := ""
+	if len(pathAndQuery) > 1 {
+		query = pathAndQuery[1]
+	}
+	return query
+}
+
+func (c *V2RayXHTTPBaseOptions) GetRequestHeader(rawURL string) http.Header {
+	header := http.Header{}
+	for k, v := range c.Headers {
+		header.Add(k, v)
+	}
+	u, _ := url.Parse(rawURL)
+	u.RawQuery = "x_padding=" + strings.Repeat("X", int(c.GetNormalizedXPaddingBytes().Rand()))
+	header.Set("Referer", u.String())
+	return header
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedXPaddingBytes() Xbadoption.Range {
+	if c.XPaddingBytes.To == 0 {
+		return Xbadoption.Range{
+			From: 100,
+			To:   1000,
+		}
+	}
+	return c.XPaddingBytes
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxEachPostBytes() Xbadoption.Range {
+	if c.ScMaxEachPostBytes.To == 0 {
+		return Xbadoption.Range{
+			From: 1000000,
+			To:   1000000,
+		}
+	}
+	return c.ScMaxEachPostBytes
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedScMinPostsIntervalMs() Xbadoption.Range {
+	if c.ScMinPostsIntervalMs.To == 0 {
+		return Xbadoption.Range{
+			From: 30,
+			To:   30,
+		}
+	}
+	return c.ScMinPostsIntervalMs
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxBufferedPosts() int {
+	if c.ScMaxBufferedPosts == 0 {
+		return 30
+	}
+	return int(c.ScMaxBufferedPosts)
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedScStreamUpServerSecs() Xbadoption.Range {
+	if c.ScStreamUpServerSecs.To == 0 {
+		return Xbadoption.Range{
+			From: 20,
+			To:   80,
+		}
+	}
+	return c.ScStreamUpServerSecs
+}
+
+type V2RayXHTTPXmuxOptions struct {
+	MaxConcurrency   Xbadoption.Range `json:"max_concurrency"`
+	MaxConnections   Xbadoption.Range `json:"max_connections"`
+	CMaxReuseTimes   Xbadoption.Range `json:"c_max_reuse_times"`
+	HMaxRequestTimes Xbadoption.Range `json:"h_max_request_times"`
+	HMaxReusableSecs Xbadoption.Range `json:"h_max_reusable_secs"`
+	HKeepAlivePeriod int64            `json:"h_keep_alive_period"`
+}
+
+func (m *V2RayXHTTPXmuxOptions) GetNormalizedMaxConcurrency() Xbadoption.Range {
+	return m.MaxConcurrency
+}
+
+func (m *V2RayXHTTPXmuxOptions) GetNormalizedMaxConnections() Xbadoption.Range {
+	return m.MaxConnections
+}
+
+func (m *V2RayXHTTPXmuxOptions) GetNormalizedCMaxReuseTimes() Xbadoption.Range {
+	return m.CMaxReuseTimes
+}
+
+func (m *V2RayXHTTPXmuxOptions) GetNormalizedHMaxRequestTimes() Xbadoption.Range {
+	return m.HMaxRequestTimes
+}
+
+func (m *V2RayXHTTPXmuxOptions) GetNormalizedHMaxReusableSecs() Xbadoption.Range {
+	return m.HMaxReusableSecs
 }

@@ -23,8 +23,10 @@ func xhttpTransport(mode string) *option.V2RayTransportOptions {
 	return &option.V2RayTransportOptions{
 		Type: C.V2RayTransportTypeXHTTP,
 		XHTTPOptions: option.V2RayXHTTPOptions{
-			Mode: mode,
-			Path: "/xhttp",
+			V2RayXHTTPBaseOptions: option.V2RayXHTTPBaseOptions{
+				Mode: mode,
+				Path: "/xhttp",
+			},
 		},
 	}
 }
@@ -73,6 +75,39 @@ func TestVLESSXHTTP(t *testing.T) {
 	t.Run("packet-up-tls", func(t *testing.T) { testVLESSXHTTP(t, "packet-up", true) })
 	t.Run("stream-up-tls", func(t *testing.T) { testVLESSXHTTP(t, "stream-up", true) })
 	t.Run("packet-up-plain", func(t *testing.T) { testVLESSXHTTP(t, "packet-up", false) })
+}
+
+func TestVLESSXHTTPAutoMode(t *testing.T) {
+	t.Run("empty-mode-plain", func(t *testing.T) { testVLESSXHTTP(t, "", false) })
+	t.Run("empty-mode-tls", func(t *testing.T) { testVLESSXHTTP(t, "", true) })
+	t.Run("auto-string-plain", func(t *testing.T) { testVLESSXHTTP(t, "auto", false) })
+	t.Run("auto-string-tls", func(t *testing.T) { testVLESSXHTTP(t, "auto", true) })
+}
+
+func TestVLESSXHTTPStreamOne(t *testing.T) {
+	t.Run("stream-one-plain", func(t *testing.T) { testVLESSXHTTP(t, "stream-one", false) })
+	t.Run("stream-one-tls", func(t *testing.T) { testVLESSXHTTP(t, "stream-one", true) })
+}
+
+func TestVLESSXHTTPAllModes(t *testing.T) {
+	modes := []struct {
+		name   string
+		mode   string
+		useTLS bool
+	}{
+		{"packet-up/plain", "packet-up", false},
+		{"packet-up/tls", "packet-up", true},
+		{"stream-up/tls", "stream-up", true},
+		{"stream-one/plain", "stream-one", false},
+		{"stream-one/tls", "stream-one", true},
+		{"auto/plain", "", false},
+		{"auto/tls", "", true},
+		{"auto-string/plain", "auto", false},
+		{"auto-string/tls", "auto", true},
+	}
+	for _, m := range modes {
+		t.Run(m.name, func(t *testing.T) { testVLESSXHTTP(t, m.mode, m.useTLS) })
+	}
 }
 
 func testVLESSXHTTP(t *testing.T, mode string, useTLS bool) {

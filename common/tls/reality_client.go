@@ -22,11 +22,15 @@ import (
 	mRand "math/rand"
 	"net"
 	"net/http"
+	"os"
 	"reflect"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -45,10 +49,13 @@ import (
 var _ ConfigCompat = (*RealityClientConfig)(nil)
 
 type RealityClientConfig struct {
-	ctx       context.Context
-	uClient   *UTLSClientConfig
-	publicKey []byte
-	shortID   [8]byte
+	ctx           context.Context
+	uClient       *UTLSClientConfig
+	publicKey     []byte
+	shortID       [8]byte
+	mldsa65Verify []byte
+	spiderX       string
+	spiderY       []int64
 }
 
 func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
@@ -77,7 +84,38 @@ func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
 		return nil, E.New("invalid short_id")
 	}
 
-	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID}
+	var mldsa65Verify []byte
+	if options.Reality.Mldsa65Verify != "" {
+		mldsa65Verify, err = base64.RawURLEncoding.DecodeString(options.Reality.Mldsa65Verify)
+		if err != nil {
+			return nil, E.Cause(err, "decode mldsa65_verify")
+		}
+	}
+
+	uTLSConfig := uClient.(*UTLSClientConfig)
+
+	if options.Reality.MasterKeyLog != "" && options.Reality.MasterKeyLog != "none" {
+		keyLogWriter, err := os.OpenFile(options.Reality.MasterKeyLog, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
+		if err != nil {
+			return nil, E.Cause(err, "open master_key_log file")
+		}
+		uTLSConfig.config.KeyLogWriter = keyLogWriter
+	}
+
+	spiderY := options.Reality.SpiderY
+	if len(spiderY) == 0 {
+		spiderY = []int64{100, 300, 2, 5, 500, 1000, 100, 200, 200, 500}
+	}
+
+	var config Config = &RealityClientConfig{
+		ctx:           ctx,
+		uClient:       uTLSConfig,
+		publicKey:     publicKey,
+		shortID:       shortID,
+		mldsa65Verify: mldsa65Verify,
+		spiderX:       options.Reality.SpiderX,
+		spiderY:       spiderY,
+	}
 	if options.KernelRx || options.KernelTx {
 		if !C.IsLinux {
 			return nil, E.New("kTLS is only supported on Linux")
@@ -118,7 +156,8 @@ func (e *RealityClientConfig) Client(conn net.Conn) (Conn, error) {
 
 func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) (aTLS.Conn, error) {
 	verifier := &realityVerifier{
-		serverName: e.uClient.ServerName(),
+		serverName:    e.uClient.ServerName(),
+		mldsa65Verify: e.mldsa65Verify,
 	}
 	uConfig := e.uClient.config.Clone()
 	uConfig.InsecureSkipVerify = true
@@ -219,15 +258,45 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	}
 
 	if !verifier.verified {
-		go realityClientFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id)
+		go realityClientSpiderFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id, e.spiderX, e.spiderY)
 		return nil, E.New("reality verification failed")
 	}
 
 	return &realityClientConnWrapper{uConn}, nil
 }
 
-func realityClientFallback(ctx context.Context, uConn net.Conn, serverName string, fingerprint utls.ClientHelloID) {
+var (
+	reHref = regexp.MustCompile(`href="([/h].*?)"`)
+	reDot  = []byte(".")
+)
+
+func randBetween(min, max int64) int64 {
+	if min >= max {
+		return min
+	}
+	return min + mRand.Int63n(max-min+1)
+}
+
+var spiderMaps struct {
+	sync.Mutex
+	maps map[string]map[string]struct{}
+}
+
+func spiderGetPathLocked(paths map[string]struct{}) string {
+	stopAt := int(randBetween(0, int64(len(paths)-1)))
+	i := 0
+	for s := range paths {
+		if i == stopAt {
+			return s
+		}
+		i++
+	}
+	return "/"
+}
+
+func realityClientSpiderFallback(ctx context.Context, uConn net.Conn, serverName string, fingerprint utls.ClientHelloID, spiderX string, spiderY []int64) {
 	defer uConn.Close()
+
 	client := &http.Client{
 		Transport: &http2.Transport{
 			DialTLSContext: func(ctx context.Context, network, addr string, config *tls.Config) (net.Conn, error) {
@@ -239,31 +308,101 @@ func realityClientFallback(ctx context.Context, uConn net.Conn, serverName strin
 			},
 		},
 	}
-	request, _ := http.NewRequest("GET", "https://"+serverName, nil)
-	request.Header.Set("User-Agent", fingerprint.Client)
-	request.AddCookie(&http.Cookie{Name: "padding", Value: strings.Repeat("0", mRand.Intn(32)+30)})
-	response, err := client.Do(request)
-	if err != nil {
-		return
+
+	prefix := []byte("https://" + serverName)
+
+	spiderMaps.Lock()
+	if spiderMaps.maps == nil {
+		spiderMaps.maps = make(map[string]map[string]struct{})
 	}
-	_, _ = io.Copy(io.Discard, response.Body)
-	response.Body.Close()
+	paths := spiderMaps.maps[serverName]
+	if paths == nil {
+		paths = make(map[string]struct{})
+		if spiderX == "" {
+			spiderX = "/"
+		}
+		paths[spiderX] = struct{}{}
+		spiderMaps.maps[serverName] = paths
+	}
+	firstURL := string(prefix) + spiderGetPathLocked(paths)
+	spiderMaps.Unlock()
+
+	get := func(first bool) {
+		var (
+			req  *http.Request
+			resp *http.Response
+			err  error
+			body []byte
+		)
+		if first {
+			req, _ = http.NewRequest("GET", firstURL, nil)
+		} else {
+			spiderMaps.Lock()
+			req, _ = http.NewRequest("GET", string(prefix)+spiderGetPathLocked(paths), nil)
+			spiderMaps.Unlock()
+		}
+		if req == nil {
+			return
+		}
+		req.Header.Set("User-Agent", fingerprint.Client)
+		times := 1
+		if !first {
+			times = int(randBetween(spiderY[4], spiderY[5]))
+		}
+		for j := 0; j < times; j++ {
+			if !first && j == 0 {
+				req.Header.Set("Referer", firstURL)
+			}
+			req.AddCookie(&http.Cookie{Name: "padding", Value: strings.Repeat("0", int(randBetween(spiderY[0], spiderY[1])))})
+			if resp, err = client.Do(req); err != nil {
+				break
+			}
+			defer resp.Body.Close()
+			req.Header.Set("Referer", req.URL.String())
+			if body, err = io.ReadAll(resp.Body); err != nil {
+				break
+			}
+			spiderMaps.Lock()
+			for _, m := range reHref.FindAllSubmatch(body, -1) {
+				m[1] = bytes.TrimPrefix(m[1], prefix)
+				if !bytes.Contains(m[1], reDot) {
+					paths[string(m[1])] = struct{}{}
+				}
+			}
+			req.URL.Path = spiderGetPathLocked(paths)
+			spiderMaps.Unlock()
+			if !first {
+				time.Sleep(time.Duration(randBetween(spiderY[6], spiderY[7])) * time.Millisecond)
+			}
+		}
+	}
+
+	get(true)
+	concurrency := int(randBetween(spiderY[2], spiderY[3]))
+	for i := 0; i < concurrency; i++ {
+		go get(false)
+	}
+	time.Sleep(time.Duration(randBetween(spiderY[8], spiderY[9])) * time.Millisecond)
 }
 
 func (e *RealityClientConfig) Clone() Config {
 	return &RealityClientConfig{
-		e.ctx,
-		e.uClient.Clone().(*UTLSClientConfig),
-		e.publicKey,
-		e.shortID,
+		ctx:           e.ctx,
+		uClient:       e.uClient.Clone().(*UTLSClientConfig),
+		publicKey:     e.publicKey,
+		shortID:       e.shortID,
+		mldsa65Verify: e.mldsa65Verify,
+		spiderX:       e.spiderX,
+		spiderY:       e.spiderY,
 	}
 }
 
 type realityVerifier struct {
 	*utls.UConn
-	serverName string
-	authKey    []byte
-	verified   bool
+	serverName    string
+	authKey       []byte
+	mldsa65Verify []byte
+	verified      bool
 }
 
 func (c *realityVerifier) VerifyPeerCertificate(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
@@ -273,8 +412,20 @@ func (c *realityVerifier) VerifyPeerCertificate(rawCerts [][]byte, verifiedChain
 		h := hmac.New(sha512.New, c.authKey)
 		h.Write(pub)
 		if bytes.Equal(h.Sum(nil), certs[0].Signature) {
-			c.verified = true
-			return nil
+			if len(c.mldsa65Verify) > 0 {
+				if len(certs[0].Extensions) > 0 {
+					h.Write(c.HandshakeState.Hello.Raw)
+					h.Write(c.HandshakeState.ServerHello.Raw)
+					verify, _ := mldsa65.Scheme().UnmarshalBinaryPublicKey(c.mldsa65Verify)
+					if mldsa65.Verify(verify.(*mldsa65.PublicKey), h.Sum(nil), nil, certs[0].Extensions[0].Value) {
+						c.verified = true
+						return nil
+					}
+				}
+			} else {
+				c.verified = true
+				return nil
+			}
 		}
 	}
 	opts := x509.VerifyOptions{

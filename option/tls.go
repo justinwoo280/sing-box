@@ -191,16 +191,29 @@ func (c *CurvePreference) UnmarshalJSON(data []byte) error {
 }
 
 type InboundRealityOptions struct {
-	Enabled           bool                           `json:"enabled,omitempty"`
-	Handshake         InboundRealityHandshakeOptions `json:"handshake,omitempty"`
-	PrivateKey        string                         `json:"private_key,omitempty"`
-	ShortID           badoption.Listable[string]     `json:"short_id,omitempty"`
-	MaxTimeDifference badoption.Duration             `json:"max_time_difference,omitempty"`
+	Enabled               bool                           `json:"enabled,omitempty"`
+	Handshake             InboundRealityHandshakeOptions `json:"handshake,omitempty"`
+	PrivateKey            string                         `json:"private_key,omitempty"`
+	ShortID               badoption.Listable[string]     `json:"short_id,omitempty"`
+	MaxTimeDifference     badoption.Duration             `json:"max_time_difference,omitempty"`
+	Show                  bool                           `json:"show,omitempty"`
+	Xver                  uint8                          `json:"xver,omitempty"`
+	MinClientVer          string                         `json:"min_client_ver,omitempty"`
+	MaxClientVer          string                         `json:"max_client_ver,omitempty"`
+	Mldsa65Seed           string                         `json:"mldsa65_seed,omitempty"`
+	LimitFallbackUpload   *InboundRealityLimitFallback   `json:"limit_fallback_upload,omitempty"`
+	LimitFallbackDownload *InboundRealityLimitFallback   `json:"limit_fallback_download,omitempty"`
 }
 
 type InboundRealityHandshakeOptions struct {
 	ServerOptions
 	DialerOptions
+}
+
+type InboundRealityLimitFallback struct {
+	AfterBytes       uint64 `json:"after_bytes,omitempty"`
+	BytesPerSec      uint64 `json:"bytes_per_sec,omitempty"`
+	BurstBytesPerSec uint64 `json:"burst_bytes_per_sec,omitempty"`
 }
 
 type InboundECHOptions struct {
@@ -241,7 +254,11 @@ type OutboundUTLSOptions struct {
 }
 
 type OutboundRealityOptions struct {
-	Enabled   bool   `json:"enabled,omitempty"`
-	PublicKey string `json:"public_key,omitempty"`
-	ShortID   string `json:"short_id,omitempty"`
+	Enabled       bool    `json:"enabled,omitempty"`
+	PublicKey     string  `json:"public_key,omitempty"`
+	ShortID       string  `json:"short_id,omitempty"`
+	Mldsa65Verify string  `json:"mldsa65_verify,omitempty"`
+	SpiderX       string  `json:"spider_x,omitempty"`
+	SpiderY       []int64 `json:"spider_y,omitempty"`
+	MasterKeyLog  string  `json:"master_key_log,omitempty"`
 }

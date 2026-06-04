@@ -7,10 +7,10 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 	"net"
 	"time"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -19,18 +19,18 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/ntp"
-
-	utls "github.com/metacubex/utls"
+	reality "github.com/xtls/reality"
 )
 
 var _ ServerConfigCompat = (*RealityServerConfig)(nil)
 
 type RealityServerConfig struct {
-	config *utls.RealityConfig
+	config *reality.Config
+	logger log.ContextLogger
 }
 
 func NewRealityServer(ctx context.Context, logger log.ContextLogger, options option.InboundTLSOptions) (ServerConfig, error) {
-	var tlsConfig utls.RealityConfig
+	var tlsConfig reality.Config
 
 	if options.ACME != nil && len(options.ACME.Domain) > 0 {
 		return nil, E.New("acme is unavailable in reality")
@@ -79,13 +79,10 @@ func NewRealityServer(ctx context.Context, logger log.ContextLogger, options opt
 	}
 
 	tlsConfig.SessionTicketsDisabled = true
-	tlsConfig.Log = func(format string, v ...any) {
-		if logger != nil {
-			logger.Trace(fmt.Sprintf(format, v...))
-		}
-	}
+	tlsConfig.Show = options.Reality.Show
 	tlsConfig.Type = N.NetworkTCP
 	tlsConfig.Dest = options.Reality.Handshake.ServerOptions.Build().String()
+	tlsConfig.Xver = options.Reality.Xver
 
 	tlsConfig.ServerNames = map[string]bool{options.ServerName: true}
 	privateKey, err := base64.RawURLEncoding.DecodeString(options.Reality.PrivateKey)
@@ -97,6 +94,33 @@ func NewRealityServer(ctx context.Context, logger log.ContextLogger, options opt
 	}
 	tlsConfig.PrivateKey = privateKey
 	tlsConfig.MaxTimeDiff = time.Duration(options.Reality.MaxTimeDifference)
+
+	if options.Reality.MinClientVer != "" {
+		tlsConfig.MinClientVer = make([]byte, 3)
+		_, err = hex.Decode(tlsConfig.MinClientVer, []byte(options.Reality.MinClientVer))
+		if err != nil {
+			return nil, E.Cause(err, "decode min_client_ver")
+		}
+	}
+	if options.Reality.MaxClientVer != "" {
+		tlsConfig.MaxClientVer = make([]byte, 3)
+		_, err = hex.Decode(tlsConfig.MaxClientVer, []byte(options.Reality.MaxClientVer))
+		if err != nil {
+			return nil, E.Cause(err, "decode max_client_ver")
+		}
+	}
+
+	if options.Reality.Mldsa65Seed != "" {
+		seed, err := base64.RawURLEncoding.DecodeString(options.Reality.Mldsa65Seed)
+		if err != nil {
+			return nil, E.Cause(err, "decode mldsa65_seed")
+		}
+		if len(seed) != 32 {
+			return nil, E.New("invalid mldsa65_seed length")
+		}
+		_, key := mldsa65.NewKeyFromSeed((*[32]byte)(seed))
+		tlsConfig.Mldsa65Key = key.Bytes()
+	}
 
 	tlsConfig.ShortIds = make(map[[8]byte]bool)
 	if len(options.Reality.ShortID) == 0 {
@@ -115,6 +139,17 @@ func NewRealityServer(ctx context.Context, logger log.ContextLogger, options opt
 		}
 	}
 
+	if options.Reality.LimitFallbackUpload != nil {
+		tlsConfig.LimitFallbackUpload.AfterBytes = options.Reality.LimitFallbackUpload.AfterBytes
+		tlsConfig.LimitFallbackUpload.BytesPerSec = options.Reality.LimitFallbackUpload.BytesPerSec
+		tlsConfig.LimitFallbackUpload.BurstBytesPerSec = options.Reality.LimitFallbackUpload.BurstBytesPerSec
+	}
+	if options.Reality.LimitFallbackDownload != nil {
+		tlsConfig.LimitFallbackDownload.AfterBytes = options.Reality.LimitFallbackDownload.AfterBytes
+		tlsConfig.LimitFallbackDownload.BytesPerSec = options.Reality.LimitFallbackDownload.BytesPerSec
+		tlsConfig.LimitFallbackDownload.BurstBytesPerSec = options.Reality.LimitFallbackDownload.BurstBytesPerSec
+	}
+
 	handshakeDialer, err := dialer.New(ctx, options.Reality.Handshake.DialerOptions, options.Reality.Handshake.ServerIsDomain())
 	if err != nil {
 		return nil, err
@@ -126,7 +161,7 @@ func NewRealityServer(ctx context.Context, logger log.ContextLogger, options opt
 	if options.ECH != nil && options.ECH.Enabled {
 		return nil, E.New("Reality is conflict with ECH")
 	}
-	var config ServerConfig = &RealityServerConfig{&tlsConfig}
+	var config ServerConfig = &RealityServerConfig{config: &tlsConfig, logger: logger}
 	if options.KernelTx || options.KernelRx {
 		if !C.IsLinux {
 			return nil, E.New("kTLS is only supported on Linux")
@@ -166,6 +201,7 @@ func (c *RealityServerConfig) Client(conn net.Conn) (Conn, error) {
 }
 
 func (c *RealityServerConfig) Start() error {
+	go reality.DetectPostHandshakeRecordsLens(c.config)
 	return nil
 }
 
@@ -178,7 +214,7 @@ func (c *RealityServerConfig) Server(conn net.Conn) (Conn, error) {
 }
 
 func (c *RealityServerConfig) ServerHandshake(ctx context.Context, conn net.Conn) (Conn, error) {
-	tlsConn, err := utls.RealityServer(ctx, conn, c.config)
+	tlsConn, err := reality.Server(ctx, conn, c.config)
 	if err != nil {
 		return nil, err
 	}
@@ -187,14 +223,15 @@ func (c *RealityServerConfig) ServerHandshake(ctx context.Context, conn net.Conn
 
 func (c *RealityServerConfig) Clone() Config {
 	return &RealityServerConfig{
-		config: c.config.Clone(),
+		config: c.config,
+		logger: c.logger,
 	}
 }
 
 var _ Conn = (*realityConnWrapper)(nil)
 
 type realityConnWrapper struct {
-	*utls.Conn
+	*reality.Conn
 }
 
 func (c *realityConnWrapper) ConnectionState() ConnectionState {
@@ -220,8 +257,6 @@ func (c *realityConnWrapper) Upstream() any {
 	return c.Conn
 }
 
-// Due to low implementation quality, the reality server intercepted half close and caused memory leaks.
-// We fixed it by calling Close() directly.
 func (c *realityConnWrapper) CloseWrite() error {
 	return c.Close()
 }
