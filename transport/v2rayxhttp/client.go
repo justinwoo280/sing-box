@@ -388,11 +388,9 @@ func createHTTPClient(dest M.Socksaddr, dialer N.Dialer, options *option.V2RayXH
                         DialTLSContext:  httpDialContext,
                         DialContext:     httpDialContext,
                         IdleConnTimeout: net.ConnIdleTimeout,
-                        // Enable KeepAlives for better performance
-                        DisableKeepAlives: false,
-                        MaxIdleConns:      100,
-                        MaxIdleConnsPerHost: 10,
-                        MaxConnsPerHost:   20,
+                        // chunked transfer download with KeepAlives is buggy with
+			// http.Client and our custom dial context.
+                        DisableKeepAlives: true,
                 }
         }
         client := &DefaultDialerClient{

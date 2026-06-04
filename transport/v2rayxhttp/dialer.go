@@ -48,19 +48,9 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, body i
 	gotConn := done.New()
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
-			fmt.Printf("[DEBUG httptrace] GotConn: remote=%v, reused=%v, idle=%v\n", connInfo.Conn.RemoteAddr(), connInfo.Reused, connInfo.WasIdle)
 			remoteAddr = connInfo.Conn.RemoteAddr()
 			localAddr = connInfo.Conn.LocalAddr()
 			gotConn.Close()
-		},
-		WroteHeaders: func() {
-			fmt.Printf("[DEBUG httptrace] WroteHeaders\n")
-		},
-		WroteRequest: func(info httptrace.WroteRequestInfo) {
-			fmt.Printf("[DEBUG httptrace] WroteRequest: err=%v\n", info.Err)
-		},
-		GotFirstResponseByte: func() {
-			fmt.Printf("[DEBUG httptrace] GotFirstResponseByte\n")
 		},
 	})
 	method := "GET" // stream-down
@@ -74,9 +64,7 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, body i
 	}
 	wrc = &WaitReadCloser{Wait: make(chan struct{})}
 	go func() {
-		fmt.Printf("[DEBUG client OpenStream] starting POST to %s, body=%T\n", url, body)
 		resp, err := c.client.Do(req)
-		fmt.Printf("[DEBUG client OpenStream] Do returned: err=%v, status=%d\n", err, func() int { if resp != nil { return resp.StatusCode }; return 0 }())
 		if err != nil {
 			if !uploadOnly { // stream-down is enough
 				c.closed = true
@@ -94,7 +82,6 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, body i
 		wrc.(*WaitReadCloser).Set(resp.Body)
 	}()
 	<-gotConn.Wait()
-	fmt.Printf("[DEBUG client OpenStream] gotConn returned\n")
 	return
 }
 

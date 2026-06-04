@@ -3,7 +3,6 @@ package xhttp
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -189,7 +188,13 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 							if err != nil {
 								break
 							}
-							time.Sleep(time.Duration(scStreamUpServerSecs.Rand()) * time.Second)
+							timer := time.NewTimer(time.Duration(scStreamUpServerSecs.Rand()) * time.Second)
+							select {
+							case <-timer.C:
+							case <-httpSC.Wait():
+								timer.Stop()
+								return
+							}
 						}
 					}()
 				}
@@ -252,13 +257,9 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		}
 		writer.WriteHeader(http.StatusOK)
 		writer.(http.Flusher).Flush()
-		var bodyReader io.Reader = request.Body
-		if sessionId == "" { // stream-one debug
-			bodyReader = &debugBodyReader{Reader: request.Body, tag: request.RemoteAddr}
-		}
 		httpSC := &httpServerConn{
 			Instance:       done.New(),
-			Reader:         bodyReader,
+			Reader:         request.Body,
 			ResponseWriter: writer,
 		}
 		conn := splitConn{
@@ -270,6 +271,17 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		if sessionId != "" { // if not stream-one
 			conn.reader = currentSession.uploadQueue
 		}
+		if sessionId != "" {
+			ctxDone := make(chan struct{})
+			defer close(ctxDone)
+			go func() {
+				select {
+				case <-request.Context().Done():
+					currentSession.uploadQueue.Close()
+				case <-ctxDone:
+				}
+			}()
+		}
 		s.handler.NewConnectionEx(request.Context(), &conn, sHttp.SourceAddress(request), M.Socksaddr{}, func(it error) {})
 		// "A ResponseWriter may not be used after [Handler.ServeHTTP] has returned."
 		select {
@@ -277,6 +289,9 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		case <-httpSC.Wait():
 		}
 		conn.Close()
+		if sessionId != "" {
+			currentSession.uploadQueue.Close()
+		}
 	} else {
 		s.logger.ErrorContext(request.Context(), "unsupported method: ", request.Method)
 		writer.WriteHeader(http.StatusMethodNotAllowed)
@@ -342,31 +357,15 @@ func (s *Server) upsertSession(sessionId string) *httpSession {
 		isFullyConnected: done.New(),
 	}
 	s.sessions.Store(sessionId, session)
-	shouldReap := done.New()
-	go func() {
-		time.Sleep(30 * time.Second)
-		shouldReap.Close()
-	}()
+	reapTimer := time.NewTimer(30 * time.Second)
 	go func() {
 		select {
-		case <-shouldReap.Wait():
+		case <-reapTimer.C:
 			s.sessions.Delete(sessionId)
 			session.uploadQueue.Close()
 		case <-session.isFullyConnected.Wait():
+			reapTimer.Stop()
 		}
 	}()
 	return session
-}
-
-type debugBodyReader struct {
-	io.Reader
-	tag string
-	n   int
-}
-
-func (d *debugBodyReader) Read(p []byte) (int, error) {
-	n, err := d.Reader.Read(p)
-	d.n += n
-	fmt.Printf("[DEBUG stream-one %s] Read(%d) = n=%d, total=%d, err=%v\n", d.tag, len(p), n, d.n, err)
-	return n, err
 }

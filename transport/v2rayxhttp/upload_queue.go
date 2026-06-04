@@ -6,7 +6,6 @@ package xhttp
 import (
 	"container/heap"
 	"io"
-	"runtime"
 	"sync"
 
 	E "github.com/sagernet/sing/common/exceptions"
@@ -25,7 +24,8 @@ type uploadQueue struct {
 	writeCloseMutex sync.Mutex
 	heap            uploadHeap
 	nextSeq         uint64
-	closed          bool
+	closeOnce       sync.Once
+	done            chan struct{}
 	maxPackets      int
 }
 
@@ -34,46 +34,39 @@ func NewUploadQueue(maxPackets int) *uploadQueue {
 		pushedPackets: make(chan Packet, maxPackets),
 		heap:          uploadHeap{},
 		nextSeq:       0,
-		closed:        false,
+		done:          make(chan struct{}),
 		maxPackets:    maxPackets,
 	}
 }
 
 func (h *uploadQueue) Push(p Packet) error {
 	h.writeCloseMutex.Lock()
-	defer h.writeCloseMutex.Unlock()
-	if h.closed {
+	select {
+	case <-h.done:
+		h.writeCloseMutex.Unlock()
 		return E.New("packet queue closed")
+	default:
 	}
 	if h.nomore {
+		h.writeCloseMutex.Unlock()
 		return E.New("h.reader already exists")
 	}
 	if p.Reader != nil {
 		h.nomore = true
 	}
-	h.pushedPackets <- p
-	return nil
+	h.writeCloseMutex.Unlock()
+	select {
+	case h.pushedPackets <- p:
+		return nil
+	case <-h.done:
+		return E.New("packet queue closed")
+	}
 }
 
 func (h *uploadQueue) Close() error {
-	h.writeCloseMutex.Lock()
-	defer h.writeCloseMutex.Unlock()
-	if !h.closed {
-		h.closed = true
-		runtime.Gosched() // hope Read() gets the packet
-	f:
-		for {
-			select {
-			case p := <-h.pushedPackets:
-				if p.Reader != nil {
-					h.reader = p.Reader
-				}
-			default:
-				break f
-			}
-		}
-		close(h.pushedPackets)
-	}
+	h.closeOnce.Do(func() {
+		close(h.done)
+	})
 	if h.reader != nil {
 		return h.reader.Close()
 	}
@@ -84,19 +77,20 @@ func (h *uploadQueue) Read(b []byte) (int, error) {
 	if h.reader != nil {
 		return h.reader.Read(b)
 	}
-	if h.closed {
-		return 0, io.EOF
-	}
 	if len(h.heap) == 0 {
-		packet, more := <-h.pushedPackets
-		if !more {
+		select {
+		case packet, ok := <-h.pushedPackets:
+			if !ok {
+				return 0, io.EOF
+			}
+			if packet.Reader != nil {
+				h.reader = packet.Reader
+				return h.reader.Read(b)
+			}
+			heap.Push(&h.heap, packet)
+		case <-h.done:
 			return 0, io.EOF
 		}
-		if packet.Reader != nil {
-			h.reader = packet.Reader
-			return h.reader.Read(b)
-		}
-		heap.Push(&h.heap, packet)
 	}
 	for len(h.heap) > 0 {
 		packet := heap.Pop(&h.heap).(Packet)
@@ -125,11 +119,15 @@ func (h *uploadQueue) Read(b []byte) (int, error) {
 				return 0, E.New("packet queue is too large")
 			}
 			heap.Push(&h.heap, packet)
-			packet2, more := <-h.pushedPackets
-			if !more {
+			select {
+			case packet2, ok := <-h.pushedPackets:
+				if !ok {
+					return 0, io.EOF
+				}
+				heap.Push(&h.heap, packet2)
+			case <-h.done:
 				return 0, io.EOF
 			}
-			heap.Push(&h.heap, packet2)
 		}
 	}
 	return 0, nil
@@ -144,7 +142,7 @@ func (h uploadHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
 func (h *uploadHeap) Push(x any) {
 	// Push and Pop use pointer receivers because they modify the slice's length,
-	// not just its contents.
+	// not the slice itself.
 	*h = append(*h, x.(Packet))
 }
 
