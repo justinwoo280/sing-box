@@ -8,7 +8,7 @@ import (
 
 	N "github.com/sagernet/sing/common/network"
 
-	"github.com/metacubex/utls"
+	"github.com/refraction-networking/utls"
 )
 
 func init() {
@@ -34,23 +34,23 @@ func init() {
 	})
 }
 
-//go:linkname utlsReadRecord github.com/metacubex/utls.(*Conn).readRecord
+//go:linkname utlsReadRecord github.com/refraction-networking/utls.(*Conn).readRecord
 func utlsReadRecord(c unsafe.Pointer) error
 
-//go:linkname utlsHandlePostHandshakeMessage github.com/metacubex/utls.(*Conn).handlePostHandshakeMessage
+//go:linkname utlsHandlePostHandshakeMessage github.com/refraction-networking/utls.(*Conn).handlePostHandshakeMessage
 func utlsHandlePostHandshakeMessage(c unsafe.Pointer) error
 
-//go:linkname utlsWriteRecordLocked github.com/metacubex/utls.(*Conn).writeRecordLocked
+//go:linkname utlsWriteRecordLocked github.com/refraction-networking/utls.(*Conn).writeRecordLocked
 func utlsWriteRecordLocked(hc unsafe.Pointer, typ uint16, data []byte) (int, error)
 
-//go:linkname utlsSetErrorLocked github.com/metacubex/utls.(*halfConn).setErrorLocked
+//go:linkname utlsSetErrorLocked github.com/refraction-networking/utls.(*halfConn).setErrorLocked
 func utlsSetErrorLocked(hc unsafe.Pointer, err error) error
 
-//go:linkname utlsDecrypt github.com/metacubex/utls.(*halfConn).decrypt
+//go:linkname utlsDecrypt github.com/refraction-networking/utls.(*halfConn).decrypt
 func utlsDecrypt(hc unsafe.Pointer, record []byte) ([]byte, uint8, error)
 
-//go:linkname utlsSetTrafficSecret github.com/metacubex/utls.(*halfConn).setTrafficSecret
+//go:linkname utlsSetTrafficSecret github.com/refraction-networking/utls.(*halfConn).setTrafficSecret
 func utlsSetTrafficSecret(hc unsafe.Pointer, suite unsafe.Pointer, level int, secret []byte)
 
-//go:linkname utlsExplicitNonceLen github.com/metacubex/utls.(*halfConn).explicitNonceLen
+//go:linkname utlsExplicitNonceLen github.com/refraction-networking/utls.(*halfConn).explicitNonceLen
 func utlsExplicitNonceLen(hc unsafe.Pointer) int

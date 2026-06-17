@@ -41,7 +41,7 @@ import (
 	"github.com/sagernet/sing/common/ntp"
 	aTLS "github.com/sagernet/sing/common/tls"
 
-	utls "github.com/metacubex/utls"
+	utls "github.com/refraction-networking/utls"
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/net/http2"
 )

@@ -78,6 +78,8 @@ func (h *uploadQueue) Read(b []byte) (int, error) {
 		return h.reader.Read(b)
 	}
 	if len(h.heap) == 0 {
+		// Try non-blocking read first to avoid race between
+		// pushedPackets and done in select
 		select {
 		case packet, ok := <-h.pushedPackets:
 			if !ok {
@@ -89,7 +91,17 @@ func (h *uploadQueue) Read(b []byte) (int, error) {
 			}
 			heap.Push(&h.heap, packet)
 		case <-h.done:
-			return 0, io.EOF
+			// Drain any remaining packets before returning EOF
+			select {
+			case packet := <-h.pushedPackets:
+				if packet.Reader != nil {
+					h.reader = packet.Reader
+					return h.reader.Read(b)
+				}
+				heap.Push(&h.heap, packet)
+			default:
+				return 0, io.EOF
+			}
 		}
 	}
 	for len(h.heap) > 0 {

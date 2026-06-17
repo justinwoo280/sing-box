@@ -20,11 +20,11 @@ require (
 	github.com/libdns/alidns v1.0.6
 	github.com/libdns/cloudflare v0.2.2
 	github.com/logrusorgru/aurora v2.0.3+incompatible
-	github.com/metacubex/utls v1.8.4
 	github.com/mholt/acmez/v3 v3.1.6
 	github.com/miekg/dns v1.1.72
 	github.com/openai/openai-go/v3 v3.26.0
 	github.com/oschwald/maxminddb-golang v1.13.1
+	github.com/refraction-networking/utls v1.8.3-0.20260301010127-aa6edf4b11af
 	github.com/sagernet/asc-go v0.0.0-20241217030726-d563060fe4e1
 	github.com/sagernet/bbolt v0.0.0-20231014093535-ea5cb2fe9f0a
 	github.com/sagernet/cors v1.2.1
@@ -66,7 +66,7 @@ require (
 require (
 	github.com/juju/ratelimit v1.0.2 // indirect
 	github.com/kr/pretty v0.2.1 // indirect
-	github.com/refraction-networking/utls v1.8.2 // indirect
+	github.com/metacubex/utls v1.7.3 // indirect
 )
 
 require (

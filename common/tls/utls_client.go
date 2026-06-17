@@ -21,7 +21,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/common/ntp"
 
-	utls "github.com/metacubex/utls"
+	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/http2"
 )
 
@@ -32,6 +32,7 @@ type UTLSClientConfig struct {
 	fragment              bool
 	fragmentFallbackDelay time.Duration
 	recordFragment        bool
+	sessionIDGenerator    func(clientHello []byte, sessionID []byte) error
 }
 
 func (c *UTLSClientConfig) ServerName() string {
@@ -61,16 +62,20 @@ func (c *UTLSClientConfig) Client(conn net.Conn) (Conn, error) {
 	if c.recordFragment {
 		conn = tf.NewConn(conn, c.ctx, c.fragment, c.recordFragment, c.fragmentFallbackDelay)
 	}
-	return &utlsALPNWrapper{utlsConnWrapper{utls.UClient(conn, c.config.Clone(), c.id)}, c.config.NextProtos}, nil
+	return &utlsSessionIDWrapper{
+		utlsConnWrapper: utlsConnWrapper{utls.UClient(conn, c.config.Clone(), c.id)},
+		nextProtos:      c.config.NextProtos,
+		sessionIDGen:    c.sessionIDGenerator,
+	}, nil
 }
 
 func (c *UTLSClientConfig) SetSessionIDGenerator(generator func(clientHello []byte, sessionID []byte) error) {
-	c.config.SessionIDGenerator = generator
+	c.sessionIDGenerator = generator
 }
 
 func (c *UTLSClientConfig) Clone() Config {
 	return &UTLSClientConfig{
-		c.ctx, c.config.Clone(), c.id, c.fragment, c.fragmentFallbackDelay, c.recordFragment,
+		c.ctx, c.config.Clone(), c.id, c.fragment, c.fragmentFallbackDelay, c.recordFragment, c.sessionIDGenerator,
 	}
 }
 
@@ -137,6 +142,44 @@ func (c *utlsALPNWrapper) HandshakeContext(ctx context.Context) error {
 				}
 				break
 			}
+		}
+	}
+	return c.UConn.HandshakeContext(ctx)
+}
+
+type utlsSessionIDWrapper struct {
+	utlsConnWrapper
+	nextProtos   []string
+	sessionIDGen func(clientHello []byte, sessionID []byte) error
+}
+
+func (c *utlsSessionIDWrapper) HandshakeContext(ctx context.Context) error {
+	err := c.BuildHandshakeState()
+	if err != nil {
+		return err
+	}
+	// Apply ALPN override
+	if len(c.nextProtos) > 0 {
+		for _, extension := range c.Extensions {
+			if alpnExtension, isALPN := extension.(*utls.ALPNExtension); isALPN {
+				alpnExtension.AlpnProtocols = c.nextProtos
+				err = c.BuildHandshakeState()
+				if err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
+	// Apply session ID generator
+	if c.sessionIDGen != nil {
+		hello := c.HandshakeState.Hello
+		if err := c.sessionIDGen(hello.Raw, hello.SessionId); err != nil {
+			return err
+		}
+		err = c.BuildHandshakeState()
+		if err != nil {
+			return err
 		}
 	}
 	return c.UConn.HandshakeContext(ctx)
@@ -255,7 +298,7 @@ func NewUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddre
 	if err != nil {
 		return nil, err
 	}
-	var config Config = &UTLSClientConfig{ctx, &tlsConfig, id, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment}
+	var config Config = &UTLSClientConfig{ctx, &tlsConfig, id, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment, nil}
 	if options.ECH != nil && options.ECH.Enabled {
 		if options.Reality != nil && options.Reality.Enabled {
 			return nil, E.New("Reality is conflict with ECH")
