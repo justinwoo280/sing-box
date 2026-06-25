@@ -68,6 +68,10 @@ func (c *splitConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+func (c *splitConn) NeedAdditionalReadDeadline() bool {
+	return true
+}
+
 type H1Conn struct {
 	UnreadedResponsesCount int
 	RespBufReader          *bufio.Reader

@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/transport/v2ray"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
+	"github.com/sagernet/sing/common/bufio/deadline"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -86,20 +87,30 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 // top of: optionally going through a v2ray transport (ws/grpc/...) and
 // optionally wrapping in TLS.
 func (h *Outbound) dialUnderlying(ctx context.Context) (net.Conn, error) {
+	var conn net.Conn
 	if h.transport != nil {
-		return h.transport.DialContext(ctx)
-	}
-	conn, err := h.dialer.DialContext(ctx, N.NetworkTCP, h.serverAddr)
-	if err != nil {
-		return nil, err
-	}
-	if h.tlsConfig != nil {
-		tlsConn, err := tls.ClientHandshake(ctx, conn, h.tlsConfig)
+		var err error
+		conn, err = h.transport.DialContext(ctx)
 		if err != nil {
-			conn.Close()
 			return nil, err
 		}
-		return tlsConn, nil
+	} else {
+		var err error
+		conn, err = h.dialer.DialContext(ctx, N.NetworkTCP, h.serverAddr)
+		if err != nil {
+			return nil, err
+		}
+		if h.tlsConfig != nil {
+			tlsConn, err := tls.ClientHandshake(ctx, conn, h.tlsConfig)
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
+			conn = tlsConn
+		}
+	}
+	if deadline.NeedAdditionalReadDeadline(conn) {
+		conn = deadline.NewConn(conn)
 	}
 	return conn, nil
 }
@@ -116,7 +127,9 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 		if err != nil {
 			return nil, err
 		}
-		conn, err := h.client.DialConn(ctx, raw, socksaddrToEWP(destination))
+		hsCtx, cancel := context.WithTimeout(ctx, ewpHandshakeTimeout)
+		defer cancel()
+		conn, err := h.client.DialConn(hsCtx, raw, socksaddrToEWP(destination))
 		if err != nil {
 			raw.Close()
 			return nil, err
@@ -128,7 +141,9 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 		if err != nil {
 			return nil, err
 		}
-		pc, err := h.client.DialPacketConn(ctx, raw, socksaddrToEWP(destination))
+		hsCtx, cancel := context.WithTimeout(ctx, ewpHandshakeTimeout)
+		defer cancel()
+		pc, err := h.client.DialPacketConn(hsCtx, raw, socksaddrToEWP(destination))
 		if err != nil {
 			raw.Close()
 			return nil, err
@@ -151,7 +166,9 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	if err != nil {
 		return nil, err
 	}
-	pc, err := h.client.DialPacketConn(ctx, raw, socksaddrToEWP(destination))
+	hsCtx, cancel := context.WithTimeout(ctx, ewpHandshakeTimeout)
+	defer cancel()
+	pc, err := h.client.DialPacketConn(hsCtx, raw, socksaddrToEWP(destination))
 	if err != nil {
 		raw.Close()
 		return nil, err

@@ -38,6 +38,7 @@ type Client struct {
         options        *option.V2RayXHTTPOptions
         isReality      bool
         hasDownload    bool
+        httpVersion    string
         getRequestURL  func(sessionId string) url.URL
         getRequestURL2 func(sessionId string) url.URL
         getHTTPClient  func() (DialerClient, *XmuxClient)
@@ -126,11 +127,13 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
                         return xmuxClient2.XmuxConn.(DialerClient), xmuxClient2
                 }
         }
+        httpVersion := decideHTTPVersion(gotlsConfig, tlsConfig)
         return &Client{
                 ctx:            ctx,
                 options:        &options,
                 isReality:      isReality,
                 hasDownload:    options.Download != nil,
+                httpVersion:    httpVersion,
                 getHTTPClient:  getHTTPClient,
                 getHTTPClient2: getHTTPClient2,
                 getRequestURL:  getRequestURL,
@@ -149,6 +152,9 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
                                 mode = "stream-up"
                         }
                 }
+        }
+        if mode == "stream-up" && c.httpVersion == "1.1" {
+                return nil, E.New("xhttp stream-up requires HTTP/2 or HTTP/3: on HTTP/1.1 the server cannot flush the response while the request body is open")
         }
         sessionId := ""
         if mode != "stream-one" {

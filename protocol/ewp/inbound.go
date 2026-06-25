@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/transport/v2ray"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
+	"github.com/sagernet/sing/common/bufio/deadline"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -177,6 +178,10 @@ func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn,
 	// Stash the inbound metadata in ctx so the EWP handler can read
 	// it back when dispatching to the router.
 	ctx = adapter.WithContext(ctx, &metadata)
+
+	if deadline.NeedAdditionalReadDeadline(conn) {
+		conn = deadline.NewConn(conn)
+	}
 
 	// Bound the handshake itself with a deadline so a peer that opens
 	// a TCP/TLS connection but never sends a complete ClientHello
