@@ -50,6 +50,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/vishvananda/netns v0.0.5
 	github.com/xtls/reality v0.0.0-20260322125925-9234c772ba8f
+	go.uber.org/goleak v1.3.0
 	go.uber.org/zap v1.27.1
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.48.0

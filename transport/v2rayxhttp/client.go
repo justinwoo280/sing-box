@@ -173,18 +173,23 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
         }
         var closed atomic.Int32
         reader, writer := io.Pipe()
+        release := func() {
+                if closed.Add(1) > 1 {
+                        return
+                }
+                if xmuxClient != nil {
+                        xmuxClient.OpenUsage.Add(-1)
+                }
+                if xmuxClient2 != nil && xmuxClient2 != xmuxClient {
+                        xmuxClient2.OpenUsage.Add(-1)
+                }
+                _ = writer.Close()
+                _ = reader.Close()
+        }
         conn := splitConn{
                 writer: writer,
                 onClose: func() {
-                        if closed.Add(1) > 1 {
-                                return
-                        }
-                        if xmuxClient != nil {
-                                xmuxClient.OpenUsage.Add(-1)
-                        }
-                        if xmuxClient2 != nil && xmuxClient2 != xmuxClient {
-                                xmuxClient2.OpenUsage.Add(-1)
-                        }
+                        release()
                 },
         }
         var err error
@@ -195,6 +200,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
                 }
                 conn.reader, conn.remoteAddr, conn.localAddr, err = httpClient.OpenStream(ctx, requestURL.String(), reader, false)
                 if err != nil { // browser dialer only
+                        release()
                         return nil, err
                 }
                 return &conn, nil
@@ -204,6 +210,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
                 }
                 conn.reader, conn.remoteAddr, conn.localAddr, err = httpClient2.OpenStream(ctx, requestURL2.String(), nil, false)
                 if err != nil { // browser dialer only
+                        release()
                         return nil, err
                 }
         }
@@ -213,11 +220,12 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
                 }
                 _, _, _, err = httpClient.OpenStream(ctx, requestURL.String(), reader, true)
                 if err != nil { // browser dialer only
+                        release()
                         return nil, err
                 }
                 return &conn, nil
         }
-        scMaxEachPostBytes := options.GetNormalizedScMaxEachPostBytes()
+scMaxEachPostBytes := options.GetNormalizedScMaxEachPostBytes()
         scMinPostsIntervalMs := options.GetNormalizedScMinPostsIntervalMs()
         if scMaxEachPostBytes.From <= buf.Size {
                 panic("`scMaxEachPostBytes` should be bigger than " + strconv.Itoa(buf.Size))

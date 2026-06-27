@@ -6,7 +6,9 @@ package xhttp
 import (
 	"container/heap"
 	"io"
+	"os"
 	"sync"
+	"time"
 
 	E "github.com/sagernet/sing/common/exceptions"
 )
@@ -27,6 +29,7 @@ type uploadQueue struct {
 	closeOnce       sync.Once
 	done            chan struct{}
 	maxPackets      int
+	deadline        readDeadlineState
 }
 
 func NewUploadQueue(maxPackets int) *uploadQueue {
@@ -36,7 +39,17 @@ func NewUploadQueue(maxPackets int) *uploadQueue {
 		nextSeq:       0,
 		done:          make(chan struct{}),
 		maxPackets:    maxPackets,
+		deadline:      newReadDeadlineState(),
 	}
+}
+
+func (h *uploadQueue) SetReadDeadline(t time.Time) error {
+	h.deadline.set(t)
+	return nil
+}
+
+func (h *uploadQueue) clearDeadline() {
+	h.deadline.set(time.Time{})
 }
 
 func (h *uploadQueue) Push(p Packet) error {
@@ -78,8 +91,6 @@ func (h *uploadQueue) Read(b []byte) (int, error) {
 		return h.reader.Read(b)
 	}
 	if len(h.heap) == 0 {
-		// Try non-blocking read first to avoid race between
-		// pushedPackets and done in select
 		select {
 		case packet, ok := <-h.pushedPackets:
 			if !ok {
@@ -91,7 +102,6 @@ func (h *uploadQueue) Read(b []byte) (int, error) {
 			}
 			heap.Push(&h.heap, packet)
 		case <-h.done:
-			// Drain any remaining packets before returning EOF
 			select {
 			case packet := <-h.pushedPackets:
 				if packet.Reader != nil {
@@ -102,6 +112,9 @@ func (h *uploadQueue) Read(b []byte) (int, error) {
 			default:
 				return 0, io.EOF
 			}
+		case <-h.deadline.channel():
+			h.clearDeadline()
+			return 0, os.ErrDeadlineExceeded
 		}
 	}
 	for len(h.heap) > 0 {
@@ -139,6 +152,9 @@ func (h *uploadQueue) Read(b []byte) (int, error) {
 				heap.Push(&h.heap, packet2)
 			case <-h.done:
 				return 0, io.EOF
+			case <-h.deadline.channel():
+				h.clearDeadline()
+				return 0, os.ErrDeadlineExceeded
 			}
 		}
 	}

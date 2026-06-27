@@ -192,14 +192,14 @@ func TestUploadQueuePartialRead(t *testing.T) {
 func TestUploadQueueOverflow(t *testing.T) {
 	q := NewUploadQueue(3)
 
-	errCh := make(chan error, 1)
+	pushDone := make(chan struct{})
 	go func() {
+		defer close(pushDone)
 		q.Push(Packet{Payload: []byte("seq0"), Seq: 0})
 		for i := 2; i < 20; i++ {
 			q.Push(Packet{Payload: []byte("gap"), Seq: uint64(i)})
 		}
 		q.Close()
-		errCh <- nil
 	}()
 
 	buf := make([]byte, 1024)
@@ -223,6 +223,8 @@ func TestUploadQueueOverflow(t *testing.T) {
 		q.Close()
 		<-readErr
 	}
+	q.Close()
+	<-pushDone
 }
 
 func TestUploadQueueConcurrentPushRead(t *testing.T) {

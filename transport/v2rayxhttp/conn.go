@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/common/xray/signal/done"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 type splitConn struct {
@@ -32,17 +33,18 @@ func (c *splitConn) Close() error {
 		c.onClose()
 	}
 
-	err := c.writer.Close()
-	err2 := c.reader.Close()
-	if err != nil {
-		return err
+	var errs []error
+	if c.writer != nil {
+		if err := c.writer.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-
-	if err2 != nil {
-		return err
+	if c.reader != nil {
+		if err := c.reader.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-
-	return nil
+	return E.Errors(errs...)
 }
 
 func (c *splitConn) LocalAddr() net.Addr {
@@ -54,17 +56,21 @@ func (c *splitConn) RemoteAddr() net.Addr {
 }
 
 func (c *splitConn) SetDeadline(t time.Time) error {
-	// TODO cannot do anything useful
-	return nil
+	_ = c.SetReadDeadline(t)
+	return c.SetWriteDeadline(t)
 }
 
 func (c *splitConn) SetReadDeadline(t time.Time) error {
-	// TODO cannot do anything useful
+	if dr, ok := c.reader.(interface{ SetReadDeadline(time.Time) error }); ok {
+		return dr.SetReadDeadline(t)
+	}
 	return nil
 }
 
 func (c *splitConn) SetWriteDeadline(t time.Time) error {
-	// TODO cannot do anything useful
+	if dw, ok := c.writer.(interface{ SetWriteDeadline(time.Time) error }); ok {
+		return dw.SetWriteDeadline(t)
+	}
 	return nil
 }
 
