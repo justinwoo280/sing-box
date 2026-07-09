@@ -10,6 +10,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/hmac"
+	"crypto/mlkem"
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/tls"
@@ -34,7 +35,6 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -169,22 +169,12 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	if err != nil {
 		return nil, err
 	}
-	for _, extension := range uConn.Extensions {
-		if ce, ok := extension.(*utls.SupportedCurvesExtension); ok {
-			ce.Curves = common.Filter(ce.Curves, func(curveID utls.CurveID) bool {
-				return curveID != utls.X25519MLKEM768
-			})
-		}
-		if ks, ok := extension.(*utls.KeyShareExtension); ok {
-			ks.KeyShares = common.Filter(ks.KeyShares, func(share utls.KeyShare) bool {
-				return share.Group != utls.X25519MLKEM768
-			})
-		}
-	}
-	err = uConn.BuildHandshakeState()
-	if err != nil {
-		return nil, err
-	}
+	// NOTE: We intentionally DO NOT strip X25519MLKEM768 from the
+	// supported_groups / key_share extensions anymore. Keeping it makes
+	// the ClientHello byte-identical to real Chrome (post-quantum group
+	// included). REALITY auth below selects the X25519 private key that
+	// matches whichever key_share the server extracts, so authentication
+	// still works. See the key-selection block below.
 
 	if len(uConfig.NextProtos) > 0 {
 		for _, extension := range uConn.Extensions {
@@ -223,7 +213,47 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	if keyShareKeys == nil {
 		return nil, E.New("nil KeyShareKeys")
 	}
-	ecdheKey := keyShareKeys.Ecdhe
+	// REALITY session-id auth does an X25519 ECDH between the client's
+	// ephemeral X25519 private key and the server's REALITY public key.
+	// We must use the SAME X25519 key whose PUBLIC half the server
+	// extracts from the ClientHello.
+	//
+	// X25519MLKEM768 (0x11ec) is a hybrid PQC group. Its client
+	// key_share `data` is NOT a plain X25519 share:
+	//
+	//   MLKEM768 encapsulation key (1184B)  ‖  X25519 public key (32B)
+	//
+	// backed by two independent keys — KeyShareKeys.Mlkem (the MLKEM768
+	// decapsulation key) and KeyShareKeys.MlkemEcdhe (a DEDICATED X25519
+	// ephemeral, distinct from the plain-X25519 group's Ecdhe).
+	//
+	// CRUCIAL: the server (github.com/xtls/reality) does NOT
+	// unconditionally read the hybrid tail. It PREFERS a standalone
+	// X25519 key_share and only falls back to the hybrid tail when no
+	// standalone X25519 share is present:
+	//
+	//   for ks := range keyShares { if ks.group==X25519 {peerPub=ks.data} }
+	//   if peerPub==nil { ... use X25519MLKEM768 tail ... }
+	//
+	// A real Chrome ClientHello sends BOTH X25519MLKEM768 and a
+	// standalone X25519 key_share, so the server authenticates against
+	// the standalone X25519 share — whose private key is Ecdhe. Only if
+	// the fingerprint omits the standalone X25519 share does the server
+	// use the hybrid tail, i.e. MlkemEcdhe.
+	//
+	// So mirror the server's selection exactly: use Ecdhe when a
+	// standalone X25519 key_share is present; otherwise, if the hybrid
+	// group is present, use MlkemEcdhe. This keeps X25519MLKEM768 in the
+	// ClientHello (byte-identical to Chrome, PQC group included) while
+	// authenticating with the key the server will actually pair with.
+	var ecdheKey *ecdh.PrivateKey
+	if hasStandaloneX25519KeyShare(hello) {
+		ecdheKey = keyShareKeys.Ecdhe
+	} else if hasHybridKeyShare(hello) && keyShareKeys.MlkemEcdhe != nil {
+		ecdheKey = keyShareKeys.MlkemEcdhe
+	} else {
+		ecdheKey = keyShareKeys.Ecdhe
+	}
 	if ecdheKey == nil {
 		return nil, E.New("nil ecdheKey")
 	}
@@ -292,6 +322,32 @@ func spiderGetPathLocked(paths map[string]struct{}) string {
 		i++
 	}
 	return "/"
+}
+
+// hasStandaloneX25519KeyShare reports whether the ClientHello carries a
+// plain X25519 key_share (32-byte data). The REALITY server prefers this
+// for auth when present, pairing it with the client's Ecdhe key.
+func hasStandaloneX25519KeyShare(hello *utls.PubClientHelloMsg) bool {
+	for _, ks := range hello.KeyShares {
+		if ks.Group == utls.X25519 && len(ks.Data) == 32 {
+			return true
+		}
+	}
+	return false
+}
+
+// hasHybridKeyShare reports whether the ClientHello carries an
+// X25519MLKEM768 key_share of the expected hybrid length. The REALITY
+// server authenticates against its trailing 32 X25519 bytes (paired with
+// the client's MlkemEcdhe key) only when no standalone X25519 share
+// exists.
+func hasHybridKeyShare(hello *utls.PubClientHelloMsg) bool {
+	for _, ks := range hello.KeyShares {
+		if ks.Group == utls.X25519MLKEM768 && len(ks.Data) == mlkem.EncapsulationKeySize768+32 {
+			return true
+		}
+	}
+	return false
 }
 
 func realityClientSpiderFallback(ctx context.Context, uConn net.Conn, serverName string, fingerprint utls.ClientHelloID, spiderX string, spiderY []int64) {
