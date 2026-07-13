@@ -37,7 +37,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.6
+          go-version: ^1.25.12
       - name: Check input version
         if: github.event_name == 'workflow_dispatch'
         run: |-
@@ -86,7 +86,6 @@ jobs:
 
           - { os: darwin, arch: amd64 }
           - { os: darwin, arch: arm64 }
-          - { os: darwin, arch: amd64, legacy_go124: true, legacy_name: "macos-11" }
 
           - { os: android, arch: arm64, ndk: "aarch64-linux-android21" }
           - { os: android, arch: arm, ndk: "armv7a-linux-androideabi21" }
@@ -98,15 +97,10 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Go
-        if: ${{ ! (matrix.legacy_win7 || matrix.legacy_go124) }}
+        if: ${{ ! matrix.legacy_win7 }}
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.6
-      - name: Setup Go 1.24
-        if: matrix.legacy_go124
-        uses: actions/setup-go@v5
-        with:
-          go-version: ~1.24.10
+          go-version: ^1.25.12
       - name: Cache Go for Windows 7
         if: matrix.legacy_win7
         id: cache-go-for-windows7
