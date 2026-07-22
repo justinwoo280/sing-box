@@ -50,7 +50,6 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/vishvananda/netns v0.0.5
 	github.com/xtls/reality v0.0.0-20260322125925-9234c772ba8f
-	go.uber.org/goleak v1.3.0
 	go.uber.org/zap v1.27.1
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.52.0
@@ -103,6 +102,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.0 // indirect
 	github.com/justinwoo280/sing-ewp v0.2.4
+	github.com/justinwoo280/sing-xhttp v0.1.0
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
