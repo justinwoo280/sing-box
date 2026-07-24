@@ -129,8 +129,19 @@ jobs:
             -p "dist/${NAME}_${{ needs.calculate_version.outputs.version }}_linux_${{ matrix.debian }}.deb" \
             --architecture ${{ matrix.debian }} \
             dist/sing-box=/usr/bin/sing-box
-          curl -Lo '/tmp/debsigs.diff' 'https://gitlab.com/debsigs/debsigs/-/commit/160138f5de1ec110376d3c807b60a37388bc7c90.diff'
-          sudo patch /usr/bin/debsigs < '/tmp/debsigs.diff'
+          # debsigs needs --gpgopts support to pass the loopback pinentry
+          # passphrase to gpg. Newer Debian/Ubuntu debsigs already ships it;
+          # older versions need the upstream patch
+          # (gitlab.com/debsigs/debsigs commit 160138f5). We no longer curl the
+          # GitLab .diff at build time because GitLab now serves a Cloudflare
+          # challenge page for that URL, which breaks `patch` with
+          # "Only garbage was found in the patch input". Instead we inject the
+          # two changes idempotently with perl, only if not already present.
+          if ! grep -q 'parse_line' /usr/bin/debsigs; then
+            sudo perl -0pi -e 's/(use POSIX ":sys_wait_h";\n)/$1use Text::ParseWords qw(parse_line);\n/' /usr/bin/debsigs
+            sudo perl -0pi -e 's/(my \@cmdline = \("gpg",[^\n]*"--detach-sign"\);\n)/$1\n  if (\$gpgopts) {\n    push (\@cmdline, parse_line('"'"'\\s+'"'"', 0, \$gpgopts));\n  }\n/' /usr/bin/debsigs
+          fi
+          grep -q 'parse_line' /usr/bin/debsigs || { echo "debsigs --gpgopts patch failed to apply"; exit 1; }
           rm -rf $HOME/.gnupg
           gpg --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import <<EOF
           ${{ secrets.GPG_KEY }}
