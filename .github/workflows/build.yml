@@ -186,9 +186,13 @@ jobs:
         if: matrix.debian != ''
         run: |
           set -xeuo pipefail
-          sudo gem install fpm
-          sudo apt-get update
-          sudo apt-get install -y debsigs
+          # Retry network-bound installs: rubygems.org / apt mirrors
+          # intermittently reset connections in CI (e.g. "too many connection
+          # resets" pulling specs.4.8.gz), which used to fail the whole job.
+          retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i/5 failed: $*" >&2; sleep $((i*10)); done; return 1; }
+          retry sudo gem install fpm
+          retry sudo apt-get update
+          retry sudo apt-get install -y debsigs
           cp .fpm_systemd .fpm
           fpm -t deb \
             -v "$PKG_VERSION" \
@@ -217,7 +221,8 @@ jobs:
         if: matrix.rpm != ''
         run: |-
           set -xeuo pipefail
-          sudo gem install fpm
+          retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i/5 failed: $*" >&2; sleep $((i*10)); done; return 1; }
+          retry sudo gem install fpm
           cp .fpm_systemd .fpm
           fpm -t rpm \
             -v "$PKG_VERSION" \
@@ -236,9 +241,10 @@ jobs:
         if: matrix.pacman != ''
         run: |-
           set -xeuo pipefail
-          sudo gem install fpm
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
+          retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i/5 failed: $*" >&2; sleep $((i*10)); done; return 1; }
+          retry sudo gem install fpm
+          retry sudo apt-get update
+          retry sudo apt-get install -y libarchive-tools
           cp .fpm_systemd .fpm
           fpm -t pacman \
             -v "$PKG_VERSION" \
@@ -249,7 +255,8 @@ jobs:
         if: matrix.openwrt != ''
         run: |-
           set -xeuo pipefail
-          sudo gem install fpm
+          retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i/5 failed: $*" >&2; sleep $((i*10)); done; return 1; }
+          retry sudo gem install fpm
           cp .fpm_openwrt .fpm
           fpm -t deb \
             -v "$PKG_VERSION" \
