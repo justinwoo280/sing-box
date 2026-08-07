@@ -83,6 +83,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	}
 	for i, u := range options.Users {
 		if err := in.service.AddUser(u.UUID); err != nil {
+			_ = in.service.Close()
 			return nil, E.Cause(err, "user[", i, "] (", u.Name, ") UUID")
 		}
 	}
@@ -91,6 +92,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	if options.TLS != nil {
 		in.tlsConfig, err = tls.NewServer(ctx, logger, common.PtrValueOrDefault(options.TLS))
 		if err != nil {
+			_ = in.service.Close()
 			return nil, err
 		}
 	}
@@ -99,6 +101,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			common.PtrValueOrDefault(options.Transport),
 			in.tlsConfig, (*inboundTransportHandler)(in))
 		if err != nil {
+			_ = in.service.Close()
 			return nil, E.Cause(err, "create server transport: ", options.Transport.Type)
 		}
 	}
@@ -155,6 +158,7 @@ func (h *Inbound) Close() error {
 		h.listener,
 		h.tlsConfig,
 		h.transport,
+		h.service,
 	)
 }
 

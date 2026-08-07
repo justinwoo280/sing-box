@@ -24,6 +24,7 @@ type ewpClient interface {
 type ewpService interface {
 	AddUser(uuidStr string) error
 	HandleConn(ctx context.Context, conn net.Conn) error
+	Close() error
 }
 
 // socksaddrToEWP converts sing-box's metadata Socksaddr into the
