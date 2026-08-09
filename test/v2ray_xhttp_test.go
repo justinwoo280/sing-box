@@ -84,6 +84,12 @@ func TestVLESSXHTTPAutoMode(t *testing.T) {
 	t.Run("auto-string-tls", func(t *testing.T) { testVLESSXHTTP(t, "auto", true) })
 }
 
+func TestVLESSXHTTPH3(t *testing.T) {
+	t.Run("packet-up", func(t *testing.T) { testVLESSXHTTPWithALPN(t, "packet-up", true, "h3") })
+	t.Run("stream-up", func(t *testing.T) { testVLESSXHTTPWithALPN(t, "stream-up", true, "h3") })
+	t.Run("stream-one", func(t *testing.T) { testVLESSXHTTPWithALPN(t, "stream-one", true, "h3") })
+}
+
 func TestVLESSXHTTPStreamOne(t *testing.T) {
 	t.Run("stream-one-plain", func(t *testing.T) { testVLESSXHTTP(t, "stream-one", false) })
 	t.Run("stream-one-tls", func(t *testing.T) { testVLESSXHTTP(t, "stream-one", true) })
@@ -111,6 +117,10 @@ func TestVLESSXHTTPAllModes(t *testing.T) {
 }
 
 func testVLESSXHTTP(t *testing.T, mode string, useTLS bool) {
+	testVLESSXHTTPWithALPN(t, mode, useTLS, "")
+}
+
+func testVLESSXHTTPWithALPN(t *testing.T, mode string, useTLS bool, alpn string) {
 	user, err := uuid.DefaultGenerator.NewV4()
 	require.NoError(t, err)
 	transport := xhttpTransport(mode)
@@ -124,6 +134,10 @@ func testVLESSXHTTP(t *testing.T, mode string, useTLS bool) {
 		}
 		outTLS.TLS = &option.OutboundTLSOptions{
 			Enabled: true, ServerName: "example.org", CertificatePath: certPem,
+		}
+		if alpn != "" {
+			inTLS.TLS.ALPN = badoption.Listable[string]{alpn}
+			outTLS.TLS.ALPN = badoption.Listable[string]{alpn}
 		}
 	}
 

@@ -102,7 +102,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.0 // indirect
 	github.com/justinwoo280/sing-ewp v0.2.6
-	github.com/justinwoo280/sing-xhttp v0.1.5
+	github.com/justinwoo280/sing-xhttp v0.1.6
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect

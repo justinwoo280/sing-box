@@ -70,7 +70,7 @@ require (
 	github.com/jsimonetti/rtnetlink v1.4.0 // indirect
 	github.com/juju/ratelimit v1.0.2 // indirect
 	github.com/justinwoo280/sing-ewp v0.2.6 // indirect
-	github.com/justinwoo280/sing-xhttp v0.1.5 // indirect
+	github.com/justinwoo280/sing-xhttp v0.1.6 // indirect
 	github.com/keybase/go-keychain v0.0.1 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
