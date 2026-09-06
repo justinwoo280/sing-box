@@ -25,18 +25,10 @@ import (
 	sewp "github.com/justinwoo280/sing-ewp"
 )
 
-// ewpHandshakeTimeout caps how long an inbound peer may take to
-// complete the EWP v2 handshake (ClientHello → ServerHello →
-// optionally the first UDP_NEW frame for UDP commands). After this
-// the underlying transport is force-closed.
-//
-// Tuning notes:
-//   - The wire-level handshake itself is one round trip plus an
-//     ML-KEM-768 keygen+encap on the server, which on commodity
-//     hardware completes well under 100ms even under load.
-//   - We pad generously to 10s to absorb high-RTT mobile networks
-//     and the worst-case TLS / WS / gRPC handshake that may sit
-//     beneath EWP, while still cutting off slow-loris peers.
+// ewpHandshakeTimeout caps how long an inbound peer may take to complete
+// the EWP/v2.3 handshake (ClientInit → HelloRetry → ClientHello →
+// ServerHello → ClientFinished → ServerFinished). After this the
+// underlying transport is force-closed.
 const ewpHandshakeTimeout = 10 * time.Second
 
 func RegisterInbound(registry *inbound.Registry) {
@@ -52,7 +44,7 @@ type Inbound struct {
 	logger    logger.ContextLogger
 	listener  *listener.Listener
 	users     []option.EWPUser
-	service   ewpService
+	service   *sewp.ServiceV23
 	tlsConfig tls.ServerConfig
 	transport adapter.V2RayServerTransport
 }
@@ -67,20 +59,16 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		logger:  logger,
 		users:   options.Users,
 	}
-	// Build the EWP service and register all configured users.
-	// If a server static identity is configured, use the v2.1 service
-	// (binds the handshake to the server's long-term identity, closing
-	// audit findings S1 / S2 / H2). Otherwise fall back to the
-	// legacy v2.0 service for backwards compatibility.
-	if options.ServerStaticPrivateKey != "" {
-		v21Service, err := sewp.NewServiceV21(&inboundHandler{owner: in}, options.ServerStaticPrivateKey)
-		if err != nil {
-			return nil, E.Cause(err, "create EWP/v2.1 service")
-		}
-		in.service = v21Service
-	} else {
-		in.service = sewp.NewService(&inboundHandler{owner: in})
+
+	if options.ServerID == "" {
+		return nil, E.New("missing server_id")
 	}
+	service, err := sewp.NewServiceV23(&inboundHandler{owner: in},
+		options.SigningPrivateKey, options.ServerID, options.RouteEpoch)
+	if err != nil {
+		return nil, E.Cause(err, "create EWP/v2.3 service")
+	}
+	in.service = service
 	for i, u := range options.Users {
 		if err := in.service.AddUser(u.UUID); err != nil {
 			_ = in.service.Close()
@@ -88,7 +76,6 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		}
 	}
 
-	var err error
 	if options.TLS != nil {
 		in.tlsConfig, err = tls.NewServer(ctx, logger, common.PtrValueOrDefault(options.TLS))
 		if err != nil {
@@ -164,8 +151,7 @@ func (h *Inbound) Close() error {
 
 // NewConnectionEx is invoked by the listener for raw incoming
 // connections. We perform TLS termination (if no v2ray transport is
-// configured) then hand off to the EWP service for handshake +
-// dispatch.
+// configured) then hand off to the EWP service for handshake + dispatch.
 func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn,
 	metadata adapter.InboundContext, onClose N.CloseHandlerFunc,
 ) {
@@ -179,24 +165,19 @@ func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn,
 		}
 		conn = tlsConn
 	}
-	// Stash the inbound metadata in ctx so the EWP handler can read
-	// it back when dispatching to the router.
 	ctx = adapter.WithContext(ctx, &metadata)
 
 	if deadline.NeedAdditionalReadDeadline(conn) {
 		conn = deadline.NewConn(conn)
 	}
 
-	// Bound the handshake itself with a deadline so a peer that opens
-	// a TCP/TLS connection but never sends a complete ClientHello
-	// cannot tie up server resources indefinitely. sing-ewp's
-	// Service.HandleConn forwards a ctx deadline onto the underlying
-	// transport via SetDeadline (and clears it once the handler
-	// takes over), so we only need to attach the deadline here.
-	hsCtx, cancel := context.WithTimeout(ctx, ewpHandshakeTimeout)
-	defer cancel()
-
-	if err := h.service.HandleConn(hsCtx, conn); err != nil {
+	// HandleConn blocks for the connection's whole lifetime (after the
+	// handshake it waits for the asynchronously-routed connection to
+	// close). The handshake deadline is enforced inside the library
+	// (beginHandshake), so we must NOT wrap this in a timeout context:
+	// doing so would cancel long-lived connections when the handshake
+	// budget expired.
+	if err := h.service.HandleConn(ctx, conn); err != nil {
 		N.CloseOnHandshakeFailure(conn, onClose, err)
 		h.logger.ErrorContext(ctx, E.Cause(err, "process connection from ", metadata.Source))
 		return
@@ -258,7 +239,7 @@ func (h *Inbound) userName(uuid [sewp.UUIDLen]byte) string {
 			if u.Name != "" {
 				return u.Name
 			}
-			return hex.EncodeToString(uuid[:])
+			break
 		}
 	}
 	return hex.EncodeToString(uuid[:])

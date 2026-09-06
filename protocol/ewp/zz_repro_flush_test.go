@@ -42,11 +42,14 @@ func (c *holdConn) SetWriteDeadline(t time.Time) error { return nil } // no-op
 // instead of failing fast. The baseline net.Pipe case (immediate flush,
 // working deadlines) is covered by TestEWP_EndToEnd_TCP and succeeds.
 func TestRepro_EWPHandshakeDeadlocksOnNonFlushingTransport(t *testing.T) {
-	const uuid = "11111111-2222-3333-4444-555555555555"
+	priv, pub, err := sewp.GenerateSigningIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	clientPipe, serverPipe := net.Pipe()
 	router := newFakeRouter()
-	in := makeInbound(t, router, uuid)
+	in := makeInbound(t, router, priv, "flush-test")
 
 	// Server side: drive the byte-stream entry exactly like the inbound
 	// listener does. It blocks reading the ClientHello that never
@@ -65,9 +68,9 @@ func TestRepro_EWPHandshakeDeadlocksOnNonFlushingTransport(t *testing.T) {
 	// Client side: EWP client over a holdConn (non-flushing + no-op
 	// deadline), exactly as Outbound.dialUnderlying hands a stream-up
 	// splitConn to client.DialConn.
-	client, err := sewp.NewClient(uuid)
+	client, err := sewp.NewClientV23(v23TestUUID, "flush-test", pub, 0)
 	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+		t.Fatalf("NewClientV23: %v", err)
 	}
 	dst := sewp.Address{Addr: netip.MustParseAddrPort("8.8.8.8:443")}
 	hold := &holdConn{Conn: clientPipe}

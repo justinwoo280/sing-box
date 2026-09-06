@@ -67,22 +67,25 @@ func (r *fakeRouter) RoutePacketConnectionEx(ctx context.Context, pc N.PacketCon
 	r.doneCh <- struct{}{}
 }
 
+const v23TestUUID = "11111111-2222-3333-4444-555555555555"
+
 // makeInbound builds a minimal *Inbound suitable for driving the
-// inboundHandler bridge. We do NOT call NewInbound: that would require
-// a full sing-box context (listener, registry...) which is far beyond
-// the scope of these tests. Instead we hand-stitch the fields the
-// handler actually reads.
-func makeInbound(t *testing.T, router adapter.ConnectionRouterEx, uuid string) *Inbound {
+// inboundHandler bridge, with a live v2.3 service behind it.
+func makeInbound(t *testing.T, router adapter.ConnectionRouterEx, signingPrivB64, serverID string) *Inbound {
 	t.Helper()
 	in := &Inbound{
 		router: router,
-		users:  []option.EWPUser{{Name: "alice", UUID: uuid}},
+		users:  []option.EWPUser{{Name: "alice", UUID: v23TestUUID}},
 		logger: nopLogger{},
 	}
-	in.service = sewp.NewService(&inboundHandler{owner: in})
-	if err := in.service.AddUser(uuid); err != nil {
-		t.Fatalf("AddUser: %v", err)
+	service, err := sewp.NewServiceV23(&inboundHandler{owner: in}, signingPrivB64, serverID, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if err := service.AddUser(v23TestUUID); err != nil {
+		t.Fatal(err)
+	}
+	in.service = service
 	return in
 }
 
@@ -110,11 +113,15 @@ func (nopLogger) PanicContext(ctx context.Context, args ...any) {}
 
 func TestEWP_EndToEnd_TCP(t *testing.T) {
 	t.Parallel()
-	const uuid = "11111111-2222-3333-4444-555555555555"
+	priv, pub, err := sewp.GenerateSigningIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const serverID = "singbox-test"
 
 	clientPipe, serverPipe := net.Pipe()
 	router := newFakeRouter()
-	in := makeInbound(t, router, uuid)
+	in := makeInbound(t, router, priv, serverID)
 
 	// Server side: invoke the inbound handler exactly as the listener
 	// would (no TLS — net.Pipe is already a clear byte channel).
@@ -126,11 +133,11 @@ func TestEWP_EndToEnd_TCP(t *testing.T) {
 		in.NewConnectionEx(context.Background(), serverPipe, md, nil)
 	}()
 
-	// Client side: run the EWP client handshake exactly as
+	// Client side: run the EWP/v2.3 client handshake exactly as
 	// Outbound.DialContext would.
-	client, err := sewp.NewClient(uuid)
+	client, err := sewp.NewClientV23(v23TestUUID, serverID, pub, 0)
 	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+		t.Fatalf("NewClientV23: %v", err)
 	}
 	dst := sewp.Address{Addr: netip.MustParseAddrPort("8.8.8.8:443")}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -170,7 +177,7 @@ func TestEWP_EndToEnd_TCP(t *testing.T) {
 		_ = got.conn.Close()
 	}()
 
-	payload := []byte("end-to-end EWP through sing-box adapter")
+	payload := []byte("end-to-end EWP v2.3 through sing-box adapter")
 	if _, err := clientConn.Write(payload); err != nil {
 		t.Fatalf("client Write: %v", err)
 	}

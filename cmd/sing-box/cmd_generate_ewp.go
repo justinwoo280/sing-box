@@ -15,15 +15,15 @@ func init() {
 
 var commandGenerateEWPKeyPair = &cobra.Command{
 	Use:   "ewp-keypair",
-	Short: "Generate EWP/v2.1 server static identity key pair",
-	Long: `Generate a long-term X25519 key pair for an EWP/v2.1 server.
+	Short: "Generate EWP/v2.3 server signing identity key pair",
+	Long: `Generate a long-term Ed25519 signing identity for an EWP/v2.3 server.
 
-The PrivateKey goes into the server inbound's "server_static_private_key"
+The PrivateKey goes into the server inbound's "signing_private_key"
 field; the PublicKey goes into every client outbound's
-"server_static_public_key" field. EWP/v2.1 binds the handshake KDF to
-this identity, closing audit findings S1, S2, and H2.
+"server_public_key" field. EWP/v2.3 pins this identity and signs every
+short-term outer key and ServerHello transcript with it.
 
-Both values are base64-encoded 32-byte X25519 scalars.`,
+Both values are base64-encoded (64-byte private key, 32-byte public key).`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		err := generateEWPKeyPair()
@@ -34,7 +34,7 @@ Both values are base64-encoded 32-byte X25519 scalars.`,
 }
 
 func generateEWPKeyPair() error {
-	privB64, pubB64, err := sewp.GenerateServerStaticKeypair()
+	privB64, pubB64, err := sewp.GenerateSigningIdentity()
 	if err != nil {
 		return err
 	}

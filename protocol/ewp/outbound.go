@@ -65,20 +65,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			return nil, E.Cause(err, "create client transport: ", options.Transport.Type)
 		}
 	}
-	if options.ServerStaticPublicKey != "" {
-		o.client, err = sewp.NewClientV21(options.UUID, options.ServerStaticPublicKey)
-		if err != nil {
-			return nil, E.Cause(err, "parse EWP/v2.1 client config")
-		}
-	} else {
-		// Legacy v2.0 (no server identity binding); the v2.1 server
-		// will reject this. Kept for backwards compatibility with
-		// existing v2.0 deployments only — new deployments SHOULD
-		// configure server_static_public_key.
-		o.client, err = sewp.NewClient(options.UUID)
-		if err != nil {
-			return nil, E.Cause(err, "parse EWP UUID")
-		}
+	o.client, err = sewp.NewClientV23(options.UUID, options.ServerID, options.ServerPublicKey, options.RouteEpoch)
+	if err != nil {
+		return nil, E.Cause(err, "parse EWP/v2.3 client config")
 	}
 	return o, nil
 }

@@ -55,10 +55,16 @@ func (dummyAddr) String() string  { return "127.0.0.1:0" }
 // flush the response concurrently with the open request body, so unlike
 // H1.1 (256KB drain gate) the handshake completes.
 func TestEWP_Over_H2_StreamingPost(t *testing.T) {
-	const uuid = "11111111-2222-3333-4444-555555555555"
-	service := sewp.NewService(echoEWPHandler{})
-	if err := service.AddUser(uuid); err != nil {
-		t.Fatalf("AddUser: %v", err)
+	priv, pub, err := sewp.GenerateSigningIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := sewp.NewServiceV23(echoEWPHandler{}, priv, "h2-test", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AddUser(v23TestUUID); err != nil {
+		t.Fatal(err)
 	}
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -102,9 +108,9 @@ func TestEWP_Over_H2_StreamingPost(t *testing.T) {
 		conn = deadline.NewConn(conn)
 	}
 
-	ewpClient, err := sewp.NewClient(uuid)
+	ewpClient, err := sewp.NewClientV23(v23TestUUID, "h2-test", pub, 0)
 	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+		t.Fatalf("NewClientV23: %v", err)
 	}
 	dst := sewp.Address{Addr: netip.MustParseAddrPort("8.8.8.8:443")}
 	hsCtx, hsCancel := context.WithTimeout(context.Background(), 5*time.Second)

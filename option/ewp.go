@@ -1,46 +1,47 @@
 package option
 
-// EWPUser describes a single EWP v2 user. Name is informational
+// EWPUser describes a single EWP user. Name is informational
 // (used for logs / metrics); UUID is the authentication credential.
 type EWPUser struct {
 	Name string `json:"name,omitempty"`
 	UUID string `json:"uuid"`
 }
 
-// EWPInboundOptions configures an EWP v2 server-side listener.
+// EWPInboundOptions configures an EWP/v2.3 server-side listener.
 //
 // EWP runs on top of an arbitrary byte-stream transport (TLS, plus
 // optionally a v2ray transport such as ws/grpc/httpupgrade) — the
 // crypto/protocol layer itself does not pin a transport.
 //
-// ServerStaticPrivateKey, when non-empty, enables EWP/v2.1 by binding
-// the handshake KDF to a long-term server X25519 identity (closes
-// audit findings S1, S2, H2). Format: base64-encoded 32-byte X25519
-// scalar. Generate with `sing-box generate ewp-keypair`.
+// SigningPrivateKey is the server's Ed25519 signing identity, base64-encoded
+// (64-byte private key). Generate with `sing-box generate ewp-keypair`.
+// ServerID names this listener in the v2.3 transcript and in every signed
+// short-term outer key; clients must configure the identical value.
 type EWPInboundOptions struct {
 	ListenOptions
 	Users                  []EWPUser `json:"users,omitempty"`
-	ServerStaticPrivateKey string    `json:"server_static_private_key,omitempty"`
+	ServerID               string    `json:"server_id"`
+	RouteEpoch             uint64    `json:"route_epoch,omitempty"`
+	SigningPrivateKey      string    `json:"signing_private_key"`
 	InboundTLSOptionsContainer
 	Multiplex *InboundMultiplexOptions `json:"multiplex,omitempty"`
 	Transport *V2RayTransportOptions   `json:"transport,omitempty"`
 }
 
-// EWPOutboundOptions configures an EWP v2 client outbound. UUID is the
-// pre-shared user credential. TLS / Transport mirror the VLESS shape.
-//
-// ServerStaticPublicKey, when non-empty, enables EWP/v2.1 by pinning
-// the long-term server X25519 identity. The value is the base64
-// encoding of the genuine server's 32-byte X25519 public key (the
-// public counterpart to ServerStaticPrivateKey on the server side).
-// REQUIRED when talking to an EWP/v2.1 server; v2.1 servers REJECT
-// clients that did not bind to their identity.
+// EWPOutboundOptions configures an EWP/v2.3 client outbound. UUID is the
+// pre-shared user credential. ServerPublicKey pins the server's Ed25519
+// signing identity (base64-encoded 32-byte public key, the public
+// counterpart of the server's signing_private_key). ServerID must match
+// the server's server_id exactly. RouteEpoch is 0 unless the operator
+// rotates route tags.
 type EWPOutboundOptions struct {
 	DialerOptions
 	ServerOptions
-	UUID                  string      `json:"uuid"`
-	ServerStaticPublicKey string      `json:"server_static_public_key,omitempty"`
-	Network               NetworkList `json:"network,omitempty"`
+	UUID            string      `json:"uuid"`
+	ServerPublicKey string      `json:"server_public_key"`
+	ServerID        string      `json:"server_id"`
+	RouteEpoch      uint64      `json:"route_epoch,omitempty"`
+	Network         NetworkList `json:"network,omitempty"`
 	OutboundTLSOptionsContainer
 	Multiplex *OutboundMultiplexOptions `json:"multiplex,omitempty"`
 	Transport *V2RayTransportOptions    `json:"transport,omitempty"`

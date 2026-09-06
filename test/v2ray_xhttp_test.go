@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/ecdh"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"net/netip"
@@ -31,14 +31,14 @@ func xhttpTransport(mode string) *option.V2RayTransportOptions {
 	}
 }
 
-// generateEWPKeypair mirrors sewp.GenerateServerStaticKeypair (X25519, base64
-// std) inline so the test module needs no extra dependency.
-func generateEWPKeypair(t *testing.T) (privB64, pubB64 string) {
+// generateEWPIdentity produces an Ed25519 signing identity for EWP/v2.3,
+// mirroring sewp.GenerateSigningIdentity without an extra test dep.
+func generateEWPIdentity(t *testing.T) (privB64, pubB64 string) {
 	t.Helper()
-	key, err := ecdh.X25519().GenerateKey(rand.Reader)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	return base64.StdEncoding.EncodeToString(key.Bytes()),
-		base64.StdEncoding.EncodeToString(key.PublicKey().Bytes())
+	return base64.StdEncoding.EncodeToString(priv),
+		base64.StdEncoding.EncodeToString(pub)
 }
 
 func xhttpRoute() *option.RouteOptions {
@@ -180,13 +180,14 @@ func TestEWPXHTTP(t *testing.T) {
 	t.Run("stream-up-tls", func(t *testing.T) { testEWPXHTTP(t, "stream-up") })
 }
 
-// testEWPXHTTP runs EWP/v2.1 (server identity bound) over xhttp + TLS. EWP
-// layers its own AEAD handshake on top of the xhttp HTTP/2 stream, so a
-// passing run proves both the transport and the protocol stacking work.
+// testEWPXHTTP runs EWP/v2.3 over xhttp + TLS. EWP layers its own
+// authenticated handshake (Ed25519 identity pinning + hybrid
+// X25519+ML-KEM-768 session keys) on top of the xhttp HTTP/2 stream, so
+// a passing run proves both the transport and the protocol stacking work.
 func testEWPXHTTP(t *testing.T, mode string) {
-	user, err := uuid.DefaultGenerator.NewV4()
+	priv, pub := generateEWPIdentity(t)
+	ewpUser, err := uuid.DefaultGenerator.NewV4()
 	require.NoError(t, err)
-	priv, pub := generateEWPKeypair(t)
 	transport := xhttpTransport(mode)
 	_, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 
@@ -195,13 +196,15 @@ func testEWPXHTTP(t *testing.T, mode string) {
 			mixedInbound(),
 			{
 				Type: C.TypeEWP,
+				Tag:  "ewp-in",
 				Options: &option.EWPInboundOptions{
 					ListenOptions: option.ListenOptions{
 						Listen:     common.Ptr(badoption.Addr(netip.IPv4Unspecified())),
 						ListenPort: serverPort,
 					},
-					Users:                  []option.EWPUser{{UUID: user.String()}},
-					ServerStaticPrivateKey: priv,
+					Users:             []option.EWPUser{{Name: "user", UUID: ewpUser.String()}},
+					ServerID:          "example.org",
+					SigningPrivateKey: priv,
 					InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{
 						TLS: &option.InboundTLSOptions{
 							Enabled: true, ServerName: "example.org", CertificatePath: certPem, KeyPath: keyPem,
@@ -217,9 +220,10 @@ func testEWPXHTTP(t *testing.T, mode string) {
 				Type: C.TypeEWP,
 				Tag:  "proxy-out",
 				Options: &option.EWPOutboundOptions{
-					ServerOptions:         option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort},
-					UUID:                  user.String(),
-					ServerStaticPublicKey: pub,
+					ServerOptions:   option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort},
+					UUID:            ewpUser.String(),
+					ServerPublicKey: pub,
+					ServerID:        "example.org",
 					OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{
 						TLS: &option.OutboundTLSOptions{
 							Enabled: true, ServerName: "example.org", CertificatePath: certPem,

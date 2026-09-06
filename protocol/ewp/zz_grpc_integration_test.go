@@ -45,7 +45,7 @@ func (echoEWPHandler) NewPacketConnection(ctx context.Context, pc net.PacketConn
 }
 
 type grpcTestServerHandler struct {
-	service *sewp.Service
+	service *sewp.ServiceV23
 }
 
 func (h *grpcTestServerHandler) NewConnectionEx(ctx context.Context, conn net.Conn,
@@ -66,10 +66,17 @@ func (h *grpcTestServerHandler) NewConnectionEx(ctx context.Context, conn net.Co
 // real grpclite (gun, HTTP/2) transport in cleartext-h2c loopback, then
 // echoes a payload. Confirms EWP-over-gRPC completes instead of hanging.
 func TestEWP_Over_GRPCLite(t *testing.T) {
-	const uuid = "11111111-2222-3333-4444-555555555555"
-	service := sewp.NewService(echoEWPHandler{})
-	if err := service.AddUser(uuid); err != nil {
-		t.Fatalf("AddUser: %v", err)
+	priv, pub, err := sewp.GenerateSigningIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const serverID = "grpc-test"
+	service, err := sewp.NewServiceV23(echoEWPHandler{}, priv, serverID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AddUser(v23TestUUID); err != nil {
+		t.Fatal(err)
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -101,9 +108,9 @@ func TestEWP_Over_GRPCLite(t *testing.T) {
 		gunConn = deadline.NewConn(gunConn)
 	}
 
-	ewpClient, err := sewp.NewClient(uuid)
+	ewpClient, err := sewp.NewClientV23(v23TestUUID, serverID, pub, 0)
 	if err != nil {
-		t.Fatalf("sewp NewClient: %v", err)
+		t.Fatalf("NewClientV23: %v", err)
 	}
 	dst := sewp.Address{Addr: netip.MustParseAddrPort("8.8.8.8:443")}
 	hsCtx, hsCancel := context.WithTimeout(context.Background(), 5*time.Second)
