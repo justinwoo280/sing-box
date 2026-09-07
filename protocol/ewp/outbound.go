@@ -69,6 +69,12 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, E.Cause(err, "parse EWP/v2.3 client config")
 	}
+	// EWP/v2.3.1: enable ticket-based 1-RTT resumption with an in-memory
+	// store. Accepted tickets make the next outer connection to this
+	// server resume in 1 RTT; rejected/expired ones silently fall back to
+	// the full handshake. The store is per-outbound and process-local —
+	// a restart simply costs one full handshake.
+	o.client.SetTicketStore(sewp.NewMemoryV23TicketStore())
 	return o, nil
 }
 

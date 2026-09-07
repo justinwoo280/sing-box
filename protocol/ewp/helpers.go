@@ -14,6 +14,8 @@ import (
 type ewpClient interface {
 	DialConn(ctx context.Context, conn net.Conn, dst sewp.Address) (net.Conn, error)
 	DialPacketConn(ctx context.Context, conn net.Conn, dst sewp.Address) (net.PacketConn, error)
+	// SetTicketStore installs the v2.3.1 resumption ticket store.
+	SetTicketStore(store sewp.V23TicketStore)
 }
 
 // socksaddrToEWP converts sing-box's metadata Socksaddr into the

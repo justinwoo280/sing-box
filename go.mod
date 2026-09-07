@@ -101,7 +101,7 @@ require (
 	github.com/hdevalence/ed25519consensus v0.2.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.0 // indirect
-	github.com/justinwoo280/sing-ewp v0.3.0
+	github.com/justinwoo280/sing-ewp v0.3.1
 	github.com/justinwoo280/sing-xhttp v0.1.6
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect

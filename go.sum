@@ -108,8 +108,8 @@ github.com/jsimonetti/rtnetlink v1.4.0 h1:Z1BF0fRgcETPEa0Kt0MRk3yV5+kF1FWTni6KUF
 github.com/jsimonetti/rtnetlink v1.4.0/go.mod h1:5W1jDvWdnthFJ7fxYX1GMK07BUpI4oskfOqvPteYS6E=
 github.com/juju/ratelimit v1.0.2 h1:sRxmtRiajbvrcLQT7S+JbqU0ntsb9W2yhSdNN8tWfaI=
 github.com/juju/ratelimit v1.0.2/go.mod h1:qapgC/Gy+xNh9UxzV13HGGl/6UXNN+ct+vwSgWNm/qk=
-github.com/justinwoo280/sing-ewp v0.3.0 h1:Ta/5CMYiEd7ObPLe+is+dGB95EefmXQe+MKJOjF+Ois=
-github.com/justinwoo280/sing-ewp v0.3.0/go.mod h1:uE/pQEesc1ZeTVFNF/N3FIIl8WOiMglAVbZHc+kCAx4=
+github.com/justinwoo280/sing-ewp v0.3.1 h1:1t2lfTt3ypghV3MrL87BFwVynLncyijNa/g/zgCW6Mc=
+github.com/justinwoo280/sing-ewp v0.3.1/go.mod h1:uE/pQEesc1ZeTVFNF/N3FIIl8WOiMglAVbZHc+kCAx4=
 github.com/justinwoo280/sing-xhttp v0.1.6 h1:Nd9+EDW6YZYaZJbnQxtl2urVG48P34/4XRm7wWuqwj8=
 github.com/justinwoo280/sing-xhttp v0.1.6/go.mod h1:XAjRVYDoBeE/Ar2Klfe6ZQXFIcWW5O9HEUx66S5TvZE=
 github.com/keybase/go-keychain v0.0.1 h1:way+bWYa6lDppZoZcgMbYsvC7GxljxrskdNInRtuthU=
