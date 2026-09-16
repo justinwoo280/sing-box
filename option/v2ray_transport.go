@@ -1,7 +1,15 @@
 package option
 
 import (
+	"crypto/rand"
+	stdjson "encoding/json"
+	"fmt"
+	"math/big"
+	"net/http"
+	"net/url"
 	"reflect"
+	"strconv"
+	"strings"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/schema"
@@ -12,12 +20,13 @@ import (
 )
 
 type _V2RayTransportOptions struct {
-	Type               string                  `json:"type" enum:"http,ws,quic,grpc,httpupgrade"`
+	Type               string                  `json:"type" enum:"http,ws,quic,grpc,httpupgrade,xhttp"`
 	HTTPOptions        V2RayHTTPOptions        `json:"-"`
 	WebsocketOptions   V2RayWebsocketOptions   `json:"-"`
 	QUICOptions        V2RayQUICOptions        `json:"-"`
 	GRPCOptions        V2RayGRPCOptions        `json:"-"`
 	HTTPUpgradeOptions V2RayHTTPUpgradeOptions `json:"-"`
+	XHTTPOptions       V2RayXHTTPOptions       `json:"-"`
 }
 
 type V2RayTransportOptions _V2RayTransportOptions
@@ -35,6 +44,8 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 		v = o.GRPCOptions
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = o.HTTPUpgradeOptions
+	case C.V2RayTransportTypeXHTTP:
+		v = o.XHTTPOptions
 	case "":
 		return nil, E.New("missing transport type")
 	default:
@@ -60,6 +71,8 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
 		v = &o.GRPCOptions
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = &o.HTTPUpgradeOptions
+	case C.V2RayTransportTypeXHTTP:
+		v = &o.XHTTPOptions
 	default:
 		return E.New("unknown transport type: " + o.Type)
 	}
@@ -78,6 +91,7 @@ func (o V2RayTransportOptions) DescribeSchema(builder schema.Builder) (*schema.N
 			{Value: C.V2RayTransportTypeQUIC, StructType: reflect.TypeFor[V2RayQUICOptions]()},
 			{Value: C.V2RayTransportTypeGRPC, StructType: reflect.TypeFor[V2RayGRPCOptions]()},
 			{Value: C.V2RayTransportTypeHTTPUpgrade, StructType: reflect.TypeFor[V2RayHTTPUpgradeOptions]()},
+			{Value: C.V2RayTransportTypeXHTTP, StructType: reflect.TypeFor[V2RayXHTTPOptions]()},
 		}, nil)
 	})
 }
@@ -112,4 +126,157 @@ type V2RayHTTPUpgradeOptions struct {
 	Host    string               `json:"host,omitempty"`
 	Path    string               `json:"path,omitempty"`
 	Headers badoption.HTTPHeader `json:"headers,omitempty"`
+}
+
+type V2RayXHTTPBaseOptions struct {
+	Mode                 string                 `json:"mode"`
+	Host                 string                 `json:"host,omitempty"`
+	Path                 string                 `json:"path,omitempty"`
+	Headers              map[string]string      `json:"headers,omitempty"`
+	DomainStrategy       DomainStrategy         `json:"domain_strategy,omitempty"`
+	XPaddingBytes        V2RayXHTTPRange        `json:"x_padding_bytes"`
+	NoGRPCHeader         bool                   `json:"no_grpc_header,omitempty"`
+	NoSSEHeader          bool                   `json:"no_sse_header,omitempty"`
+	ScMaxEachPostBytes   V2RayXHTTPRange        `json:"sc_max_each_post_bytes"`
+	ScMinPostsIntervalMs V2RayXHTTPRange        `json:"sc_min_posts_interval_ms"`
+	ScMaxBufferedPosts   int64                  `json:"sc_max_buffered_posts,omitempty"`
+	ScStreamUpServerSecs V2RayXHTTPRange        `json:"sc_stream_up_server_secs"`
+	Xmux                 *V2RayXHTTPXmuxOptions `json:"xmux"`
+}
+
+type V2RayXHTTPOptions struct {
+	V2RayXHTTPBaseOptions
+	Download *V2RayXHTTPDownloadOptions `json:"download"`
+}
+
+type V2RayXHTTPDownloadOptions struct {
+	V2RayXHTTPBaseOptions
+	ServerOptions
+	OutboundTLSOptionsContainer
+	Detour string `json:"detour,omitempty"`
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedPath() string {
+	pathAndQuery := strings.SplitN(c.Path, "?", 2)
+	path := pathAndQuery[0]
+	if path == "" || path[0] != '/' {
+		path = "/" + path
+	}
+	if path[len(path)-1] != '/' {
+		path += "/"
+	}
+	return path
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedQuery() string {
+	pathAndQuery := strings.SplitN(c.Path, "?", 2)
+	if len(pathAndQuery) > 1 {
+		return pathAndQuery[1]
+	}
+	return ""
+}
+
+func (c *V2RayXHTTPBaseOptions) GetRequestHeader(rawURL string) http.Header {
+	header := http.Header{}
+	for k, v := range c.Headers {
+		header.Add(k, v)
+	}
+	u, _ := url.Parse(rawURL)
+	u.RawQuery = "x_padding=" + strings.Repeat("X", int(c.GetNormalizedXPaddingBytes().Rand()))
+	header.Set("Referer", u.String())
+	return header
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedXPaddingBytes() V2RayXHTTPRange {
+	if c.XPaddingBytes.To == 0 {
+		return V2RayXHTTPRange{From: 100, To: 1000}
+	}
+	return c.XPaddingBytes
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxEachPostBytes() V2RayXHTTPRange {
+	if c.ScMaxEachPostBytes.To == 0 {
+		return V2RayXHTTPRange{From: 1000000, To: 1000000}
+	}
+	return c.ScMaxEachPostBytes
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedScMinPostsIntervalMs() V2RayXHTTPRange {
+	if c.ScMinPostsIntervalMs.To == 0 {
+		return V2RayXHTTPRange{From: 30, To: 30}
+	}
+	return c.ScMinPostsIntervalMs
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxBufferedPosts() int {
+	if c.ScMaxBufferedPosts == 0 {
+		return 30
+	}
+	return int(c.ScMaxBufferedPosts)
+}
+
+func (c *V2RayXHTTPBaseOptions) GetNormalizedScStreamUpServerSecs() V2RayXHTTPRange {
+	if c.ScStreamUpServerSecs.To == 0 {
+		return V2RayXHTTPRange{From: 20, To: 80}
+	}
+	return c.ScStreamUpServerSecs
+}
+
+type V2RayXHTTPXmuxOptions struct {
+	MaxConcurrency   V2RayXHTTPRange `json:"max_concurrency"`
+	MaxConnections   V2RayXHTTPRange `json:"max_connections"`
+	CMaxReuseTimes   V2RayXHTTPRange `json:"c_max_reuse_times"`
+	HMaxRequestTimes V2RayXHTTPRange `json:"h_max_request_times"`
+	HMaxReusableSecs V2RayXHTTPRange `json:"h_max_reusable_secs"`
+	HKeepAlivePeriod int64           `json:"h_keep_alive_period"`
+}
+
+type V2RayXHTTPRange struct {
+	From int32 `json:"from"`
+	To   int32 `json:"to"`
+}
+
+func (r V2RayXHTTPRange) Rand() int32 {
+	if r.To <= r.From {
+		return r.From
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(r.To-r.From)+1))
+	if err != nil {
+		return r.From
+	}
+	return r.From + int32(n.Int64())
+}
+
+func (r V2RayXHTTPRange) MarshalJSON() ([]byte, error) {
+	return stdjson.Marshal(fmt.Sprintf("%d-%d", r.From, r.To))
+}
+
+func (r *V2RayXHTTPRange) UnmarshalJSON(content []byte) error {
+	var object struct {
+		From int32 `json:"from"`
+		To   int32 `json:"to"`
+	}
+	var stringValue string
+	if err := stdjson.Unmarshal(content, &stringValue); err == nil {
+		parts := strings.Split(stringValue, "-")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid range %q", stringValue)
+		}
+		from, err := strconv.ParseInt(parts[0], 10, 32)
+		if err != nil {
+			return err
+		}
+		to, err := strconv.ParseInt(parts[1], 10, 32)
+		if err != nil {
+			return err
+		}
+		object.From, object.To = int32(from), int32(to)
+	} else if err := stdjson.Unmarshal(content, &object); err != nil {
+		return err
+	}
+	if object.From > object.To {
+		return fmt.Errorf("invalid range: %d-%d", object.From, object.To)
+	}
+	*r = V2RayXHTTPRange{From: object.From, To: object.To}
+	return nil
 }
