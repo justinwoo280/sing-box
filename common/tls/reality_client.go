@@ -10,6 +10,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/hmac"
+	"crypto/mlkem"
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/tls"
@@ -30,7 +31,6 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -141,23 +141,11 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	uConfig.VerifyPeerCertificate = verifier.VerifyPeerCertificate
 	uConn := utls.UClient(conn, uConfig, e.uClient.id)
 	verifier.UConn = uConn
-	err := uConn.BuildHandshakeState()
-	if err != nil {
-		return nil, err
-	}
-	for _, extension := range uConn.Extensions {
-		if ce, ok := extension.(*utls.SupportedCurvesExtension); ok {
-			ce.Curves = common.Filter(ce.Curves, func(curveID utls.CurveID) bool {
-				return curveID != utls.X25519MLKEM768
-			})
-		}
-		if ks, ok := extension.(*utls.KeyShareExtension); ok {
-			ks.KeyShares = common.Filter(ks.KeyShares, func(share utls.KeyShare) bool {
-				return share.Group != utls.X25519MLKEM768
-			})
-		}
-	}
-	err = uConn.BuildHandshakeState()
+	// Keep X25519MLKEM768 in supported_groups and key_share. Removing it
+	// makes the Chrome ClientHello distinguishable and disables the PQC
+	// exchange. REALITY authentication below selects the X25519 private key
+	// matching the key share that the server will use.
+	err := prepareRealityClientHello(uConn)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +154,9 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 		for _, extension := range uConn.Extensions {
 			if alpnExtension, isALPN := extension.(*utls.ALPNExtension); isALPN {
 				alpnExtension.AlpnProtocols = uConfig.NextProtos
+				if err := uConn.BuildHandshakeState(); err != nil {
+					return nil, err
+				}
 				break
 			}
 		}
@@ -199,7 +190,14 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	if keyShareKeys == nil {
 		return nil, E.New("nil KeyShareKeys")
 	}
-	ecdheKey := keyShareKeys.Ecdhe
+	var ecdheKey *ecdh.PrivateKey
+	if hasStandaloneX25519KeyShare(hello) {
+		ecdheKey = keyShareKeys.Ecdhe
+	} else if hasHybridKeyShare(hello) && keyShareKeys.MlkemEcdhe != nil {
+		ecdheKey = keyShareKeys.MlkemEcdhe
+	} else {
+		ecdheKey = keyShareKeys.Ecdhe
+	}
 	if ecdheKey == nil {
 		return nil, E.New("nil ecdheKey")
 	}
@@ -239,6 +237,28 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	}
 
 	return &realityClientConnWrapper{uConn}, nil
+}
+
+func prepareRealityClientHello(uConn *utls.UConn) error {
+	return uConn.BuildHandshakeState()
+}
+
+func hasStandaloneX25519KeyShare(hello *utls.PubClientHelloMsg) bool {
+	for _, keyShare := range hello.KeyShares {
+		if keyShare.Group == utls.X25519 && len(keyShare.Data) == 32 {
+			return true
+		}
+	}
+	return false
+}
+
+func hasHybridKeyShare(hello *utls.PubClientHelloMsg) bool {
+	for _, keyShare := range hello.KeyShares {
+		if keyShare.Group == utls.X25519MLKEM768 && len(keyShare.Data) == mlkem.EncapsulationKeySize768+32 {
+			return true
+		}
+	}
+	return false
 }
 
 func realityClientFallback(ctx context.Context, uConn net.Conn, serverName string, fingerprint utls.ClientHelloID) {
