@@ -1,0 +1,163 @@
+package ewp
+
+import (
+	"context"
+	"net"
+
+	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/tls"
+	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/transport/v2ray"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/bufio"
+	"github.com/sagernet/sing/common/bufio/deadline"
+	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
+	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
+
+	sewp "github.com/justinwoo280/sing-ewp"
+)
+
+func RegisterOutbound(registry *outbound.Registry) {
+	outbound.Register[option.EWPOutboundOptions](registry, C.TypeEWP, NewOutbound)
+}
+
+type Outbound struct {
+	outbound.Adapter
+	logger     logger.ContextLogger
+	dialer     N.Dialer
+	client     ewpClient
+	serverAddr M.Socksaddr
+	tlsConfig  tls.Config
+	transport  adapter.V2RayClientTransport
+}
+
+func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.EWPOutboundOptions) (adapter.Outbound, error) {
+	outboundDialer, err := dialer.New(ctx, options.DialerOptions, options.ServerIsDomain())
+	if err != nil {
+		return nil, err
+	}
+	o := &Outbound{
+		Adapter:    outbound.NewAdapterWithDialerOptions(C.TypeEWP, tag, options.Network.Build(), options.DialerOptions),
+		logger:     logger,
+		dialer:     outboundDialer,
+		serverAddr: options.ServerOptions.Build(),
+	}
+	if options.TLS != nil {
+		o.tlsConfig, err = tls.NewClient(ctx, logger, options.Server, common.PtrValueOrDefault(options.TLS))
+		if err != nil {
+			return nil, err
+		}
+	}
+	if options.Transport != nil {
+		o.transport, err = v2ray.NewClientTransport(ctx, o.dialer, o.serverAddr, common.PtrValueOrDefault(options.Transport), o.tlsConfig)
+		if err != nil {
+			return nil, E.Cause(err, "create client transport: ", options.Transport.Type)
+		}
+	}
+	o.client, err = sewp.NewClientV23(options.UUID, options.ServerID, options.ServerPublicKey, options.RouteEpoch)
+	if err != nil {
+		return nil, E.Cause(err, "parse EWP/v2.3 client config")
+	}
+	o.client.SetTicketStore(sewp.NewMemoryV23TicketStore())
+	return o, nil
+}
+
+func (h *Outbound) dialUnderlying(ctx context.Context) (net.Conn, error) {
+	var conn net.Conn
+	if h.transport != nil {
+		var err error
+		conn, err = h.transport.DialContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		conn, err = h.dialer.DialContext(ctx, N.NetworkTCP, h.serverAddr)
+		if err != nil {
+			return nil, err
+		}
+		if h.tlsConfig != nil {
+			tlsConn, err := tls.ClientHandshake(ctx, conn, h.tlsConfig)
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
+			conn = tlsConn
+		}
+	}
+	if deadline.NeedAdditionalReadDeadline(conn) {
+		conn = deadline.NewConn(conn)
+	}
+	return conn, nil
+}
+
+func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	ctx, metadata := adapter.ExtendContext(ctx)
+	metadata.Outbound = h.Tag()
+	metadata.Destination = destination
+	switch N.NetworkName(network) {
+	case N.NetworkTCP:
+		h.logger.InfoContext(ctx, "outbound connection to ", destination)
+		raw, err := h.dialUnderlying(ctx)
+		if err != nil {
+			return nil, err
+		}
+		hsCtx, cancel := context.WithTimeout(ctx, ewpHandshakeTimeout)
+		defer cancel()
+		conn, err := h.client.DialConn(hsCtx, raw, socksaddrToEWP(destination))
+		if err != nil {
+			raw.Close()
+			return nil, err
+		}
+		return conn, nil
+	case N.NetworkUDP:
+		h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+		raw, err := h.dialUnderlying(ctx)
+		if err != nil {
+			return nil, err
+		}
+		hsCtx, cancel := context.WithTimeout(ctx, ewpHandshakeTimeout)
+		defer cancel()
+		pc, err := h.client.DialPacketConn(hsCtx, raw, socksaddrToEWP(destination))
+		if err != nil {
+			raw.Close()
+			return nil, err
+		}
+		return bufio.NewBindPacketConn(pc, destination), nil
+	default:
+		return nil, E.Extend(N.ErrUnknownNetwork, network)
+	}
+}
+
+func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	ctx, metadata := adapter.ExtendContext(ctx)
+	metadata.Outbound = h.Tag()
+	metadata.Destination = destination
+	h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+	raw, err := h.dialUnderlying(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hsCtx, cancel := context.WithTimeout(ctx, ewpHandshakeTimeout)
+	defer cancel()
+	pc, err := h.client.DialPacketConn(hsCtx, raw, socksaddrToEWP(destination))
+	if err != nil {
+		raw.Close()
+		return nil, err
+	}
+	return pc, nil
+}
+
+func (h *Outbound) InterfaceUpdated() {
+	if h.transport != nil {
+		h.transport.Close()
+	}
+}
+
+func (h *Outbound) Close() error { return common.Close(h.transport) }
