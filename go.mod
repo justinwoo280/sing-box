@@ -200,3 +200,5 @@ require (
 	lukechampine.com/blake3 v1.3.0 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
+
+replace github.com/sagernet/cronet-go => github.com/justinwoo280/cronet-go v0.0.0-20260919190508-7d27f47d6d39

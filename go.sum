@@ -165,6 +165,8 @@ github.com/jsimonetti/rtnetlink v1.4.1 h1:JfD4jthWBqZMEffc5RjgmlzpYttAVw1sdnmiNa
 github.com/jsimonetti/rtnetlink v1.4.1/go.mod h1:xJjT7t59UIZ62GLZbv6PLLo8VFrostJMPBAheR6OM8w=
 github.com/jsimonetti/rtnetlink/v2 v2.2.0 h1:/KfZ310gOAFrXXol5VwnFEt+ucldD/0dsSRZwpHCP9w=
 github.com/jsimonetti/rtnetlink/v2 v2.2.0/go.mod h1:lbjDHxC+5RJ08lzPeA90Ls2pEoId3F08MoEMlhfHxeI=
+github.com/justinwoo280/cronet-go v0.0.0-20260919190508-7d27f47d6d39 h1:u7Ah+VyQVGsuIvuCEHKm9h4cgk/XiK3RVGrMVX+DVIo=
+github.com/justinwoo280/cronet-go v0.0.0-20260919190508-7d27f47d6d39/go.mod h1:vZtJ/T3pKQQki+dQPhZI12vXwegOH0H8rZm+oJiilpg=
 github.com/justinwoo280/sing-ewp v0.3.1 h1:1t2lfTt3ypghV3MrL87BFwVynLncyijNa/g/zgCW6Mc=
 github.com/justinwoo280/sing-ewp v0.3.1/go.mod h1:uE/pQEesc1ZeTVFNF/N3FIIl8WOiMglAVbZHc+kCAx4=
 github.com/justinwoo280/sing-xhttp v0.1.7-0.20260915133052-ff44f49439e8 h1:LIsOX4x9Pd0+cABcpDGemGQIOTw08XTovnCabyvWpqg=
