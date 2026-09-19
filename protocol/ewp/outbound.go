@@ -37,6 +37,16 @@ type Outbound struct {
 	transport  adapter.V2RayClientTransport
 }
 
+func newOutboundTLS(ctx context.Context, logger logger.ContextLogger, options option.EWPOutboundOptions) (tls.Config, error) {
+	return tls.NewClientWithOptions(tls.ClientOptions{
+		Context:       ctx,
+		Logger:        logger,
+		ServerAddress: options.Server,
+		Options:       common.PtrValueOrDefault(options.TLS),
+		Browser:       options.Transport.IsBrowserXHTTP(),
+	})
+}
+
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.EWPOutboundOptions) (adapter.Outbound, error) {
 	outboundDialer, err := dialer.New(ctx, options.DialerOptions, options.ServerIsDomain())
 	if err != nil {
@@ -49,7 +59,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		serverAddr: options.ServerOptions.Build(),
 	}
 	if options.TLS != nil {
-		o.tlsConfig, err = tls.NewClient(ctx, logger, options.Server, common.PtrValueOrDefault(options.TLS))
+		o.tlsConfig, err = newOutboundTLS(ctx, logger, options)
 		if err != nil {
 			return nil, err
 		}

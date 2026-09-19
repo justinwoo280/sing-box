@@ -77,6 +77,7 @@ type ClientOptions struct {
 	Options              option.OutboundTLSOptions
 	AllowEmptyServerName bool
 	KTLSCompatible       bool
+	Browser              bool
 }
 
 func NewClientWithOptions(options ClientOptions) (Config, error) {
@@ -101,6 +102,9 @@ func NewClientWithOptions(options ClientOptions) (Config, error) {
 		return nil, E.New("unknown tls engine: ", options.Options.Engine)
 	}
 	if options.Options.Reality != nil && options.Options.Reality.Enabled {
+		if options.Browser {
+			return newBrowserRealityClient(options)
+		}
 		return newRealityClient(options.Context, options.Logger, options.ServerAddress, options.Options, options.AllowEmptyServerName)
 	} else if options.Options.UTLS != nil && options.Options.UTLS.Enabled {
 		return newUTLSClient(options.Context, options.Logger, options.ServerAddress, options.Options, options.AllowEmptyServerName)

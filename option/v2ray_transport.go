@@ -31,6 +31,10 @@ type _V2RayTransportOptions struct {
 
 type V2RayTransportOptions _V2RayTransportOptions
 
+func (o *V2RayTransportOptions) IsBrowserXHTTP() bool {
+	return o != nil && o.Type == C.V2RayTransportTypeXHTTP && o.XHTTPOptions.Browser
+}
+
 func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 	var v any
 	switch o.Type {
@@ -146,6 +150,7 @@ type V2RayXHTTPBaseOptions struct {
 
 type V2RayXHTTPOptions struct {
 	V2RayXHTTPBaseOptions
+	Browser  bool                       `json:"browser,omitempty"`
 	Download *V2RayXHTTPDownloadOptions `json:"download"`
 }
 

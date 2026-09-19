@@ -58,6 +58,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			Logger:        logger,
 			ServerAddress: options.Server,
 			Options:       common.PtrValueOrDefault(options.TLS),
+			Browser:       options.Transport.IsBrowserXHTTP(),
 			KTLSCompatible: common.PtrValueOrDefault(options.Transport).Type == "" &&
 				!common.PtrValueOrDefault(options.Multiplex).Enabled,
 		})

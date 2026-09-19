@@ -55,7 +55,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		serverAddr: options.ServerOptions.Build(),
 	}
 	if options.TLS != nil {
-		outbound.tlsConfig, err = tls.NewClient(ctx, logger, options.Server, common.PtrValueOrDefault(options.TLS))
+		outbound.tlsConfig, err = tls.NewClientWithOptions(tls.ClientOptions{
+			Context: ctx, Logger: logger, ServerAddress: options.Server,
+			Options: common.PtrValueOrDefault(options.TLS), Browser: options.Transport.IsBrowserXHTTP(),
+		})
 		if err != nil {
 			return nil, err
 		}

@@ -34,6 +34,7 @@ type STDClientConfig struct {
 	recordFragment        bool
 	spoof                 string
 	spoofMethod           tlsspoof.Method
+	certificatePEM        string
 }
 
 func (c *STDClientConfig) ServerName() string {
@@ -98,6 +99,7 @@ func (c *STDClientConfig) Clone() Config {
 		recordFragment:        c.recordFragment,
 		spoof:                 c.spoof,
 		spoofMethod:           c.spoofMethod,
+		certificatePEM:        c.certificatePEM,
 	}
 	cloned.SetServerName(cloned.serverName)
 	return cloned
@@ -243,6 +245,7 @@ func newSTDClient(ctx context.Context, logger logger.ContextLogger, serverAddres
 		recordFragment:        options.RecordFragment,
 		spoof:                 spoof,
 		spoofMethod:           spoofMethod,
+		certificatePEM:        string(certificate),
 	}
 	config.SetServerName(serverName)
 	if options.ECH != nil && options.ECH.Enabled {
