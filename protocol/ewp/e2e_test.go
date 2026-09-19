@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -141,5 +142,30 @@ func TestEWPSocksaddrConversion(t *testing.T) {
 		if converted != input {
 			t.Fatalf("round trip = %v, want %v", converted, input)
 		}
+	}
+}
+
+func TestEWPBrowserTLSSelection(t *testing.T) {
+	options := option.EWPOutboundOptions{
+		ServerOptions: option.ServerOptions{Server: "example.com", ServerPort: 443},
+		OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{
+			TLS: &option.OutboundTLSOptions{
+				Enabled: true,
+				Reality: &option.OutboundRealityOptions{Enabled: true, PublicKey: "invalid"},
+				ECH:     &option.OutboundECHOptions{Enabled: true},
+			},
+		},
+		Transport: &option.V2RayTransportOptions{
+			Type: "xhttp",
+			XHTTPOptions: option.V2RayXHTTPOptions{
+				V2RayXHTTPBaseOptions: option.V2RayXHTTPBaseOptions{Mode: "packet-up"},
+				Browser:               true,
+			},
+		},
+	}
+
+	_, err := newOutboundTLS(context.Background(), logger.NOP(), options)
+	if err == nil || !strings.Contains(err.Error(), "browser REALITY is incompatible with ECH") {
+		t.Fatalf("NewOutbound error = %v, want browser REALITY/ECH validation", err)
 	}
 }
