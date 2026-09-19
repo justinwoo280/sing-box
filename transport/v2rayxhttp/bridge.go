@@ -18,10 +18,16 @@ import (
 )
 
 func NewServer(ctx context.Context, logger logger.ContextLogger, options option.V2RayXHTTPOptions, tlsConfig tls.ServerConfig, handler adapter.V2RayServerTransportHandler) (adapter.V2RayServerTransport, error) {
+	if options.Browser {
+		return nil, E.New("xhttp: browser is a client-only option")
+	}
 	return xhttp.NewServer(ctx, logger, buildOptions(&options.V2RayXHTTPBaseOptions), tlsConfig, handler)
 }
 
 func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayXHTTPOptions, tlsConfig tls.Config) (adapter.V2RayClientTransport, error) {
+	if options.Browser {
+		return newBrowserClient(ctx, dialer, serverAddr, options, tlsConfig)
+	}
 	opts := buildOptions(&options.V2RayXHTTPBaseOptions)
 	if options.Download == nil {
 		return xhttp.NewClient(ctx, dialer, serverAddr, opts, tlsConfig)
