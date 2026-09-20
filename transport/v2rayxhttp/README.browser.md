@@ -126,9 +126,11 @@ handshakes fail. REALITY timestamps currently use the native system clock.
 
 ## Building and testing
 
-This checkout requires the sibling `../cronet-go` source with Browser XHTTP
-and its patched native library (Host authority mapping, Strict ECH and REALITY).
-For local development, use the supplied workspace explicitly:
+`go.mod` pins the published Cronet fork with Browser XHTTP, Host authority
+mapping, Strict ECH and REALITY. Its replacements cover the root, `all` and all
+29 native ABI modules. Normal builds use these published modules with
+`GOWORK=off`. For local development against the sibling `../cronet-go` checkout,
+use the supplied workspace explicitly:
 
 ```sh
 GOWORK="$PWD/go.work.browser.example" go build -tags 'with_cronet with_purego' ./cmd/sing-box
@@ -169,9 +171,8 @@ trusted target (independent camouflage GET following the server's TLS forwarding
 Both CGO and PureGo passed on Linux/amd64. Native cryptographic failure tests and
 their commands are documented in cronet-go's `test/native/README.md`.
 
-The module version in `go.mod` will need updating once this Cronet implementation
-and its native artifacts are published; the workspace makes the local version
-explicit during development.
+Downstream modules, including `test` and SekaiMod's `libcore`, must carry the same
+Cronet replacements: Go does not inherit replacements from dependencies.
 
 For SekaiMod/Android, the existing `gomobile bind` path should statically link
 the Android `libcronet.a` for every selected ABI into `libcore.aar`, with
