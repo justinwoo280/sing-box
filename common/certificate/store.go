@@ -138,6 +138,13 @@ func (s *Store) StoreKind() string {
 	return s.storeType
 }
 
+// IsDefaultSystemStore reports whether a native TLS engine can use its own
+// system trust store without discarding an application certificate policy.
+func (s *Store) IsDefaultSystemStore() bool {
+	return s.storeType == C.CertificateStoreSystem && s.certificate == "" &&
+		len(s.certificatePaths) == 0 && len(s.certificateDirectoryPaths) == 0
+}
+
 func (s *Store) ExclusiveAnchors() bool {
 	return s.storeType != C.CertificateStoreSystem
 }

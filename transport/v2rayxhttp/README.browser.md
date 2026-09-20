@@ -26,6 +26,12 @@ Separate download settings, uTLS handshakes, TLS fragmentation/spoofing, client 
 TLS version/cipher overrides are not supported. Unsupported settings return a
 construction error. `no_sse_header` is a server response setting.
 
+The default system certificate store (including the store automatically
+registered on Android) uses Cronet's native system-root verification. An
+application store with custom roots or a non-system trust policy still requires
+explicit outbound `tls.certificate` or `tls.certificate_path` PEM; its policy is
+never silently replaced by system roots.
+
 ECH supports `tls.ech.config`, `config_path`, or HTTPS-record discovery through
 sing-box's DNS router. The actual JSON field for a separate lookup name is
 `tls.ech.query_server_name` (not `ech_query_name`):

@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+
+	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing/service"
 )
 
 type BrowserTLSOptions struct {
@@ -40,7 +43,16 @@ func (c *STDClientConfig) BrowserTLSConfig() (options BrowserTLSOptions, err err
 		return options, errors.New("client certificates are unsupported")
 	}
 	if t.RootCAs != nil && c.certificatePEM == "" {
-		return options, errors.New("a custom certificate store requires explicit TLS certificate PEM for Cronet")
+		// Android registers a system store unconditionally. Its non-nil Go pool
+		// is not a custom trust policy: Cronet loads system roots natively.
+		// Only permit the original, unmodified default pool here.
+		store, ok := service.FromContext[adapter.CertificateStore](c.ctx).(interface {
+			adapter.CertificateStore
+			IsDefaultSystemStore() bool
+		})
+		if !ok || !store.IsDefaultSystemStore() || t.RootCAs != store.Pool() {
+			return options, errors.New("a custom certificate store requires explicit TLS certificate PEM for Cronet")
+		}
 	}
 	return BrowserTLSOptions{ServerName: c.serverName, CertificatePEM: c.certificatePEM, ECHConfigList: bytes.Clone(t.EncryptedClientHelloConfigList)}, nil
 }

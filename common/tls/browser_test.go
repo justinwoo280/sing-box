@@ -3,6 +3,7 @@ package tls
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"errors"
 	"strings"
 	"testing"
@@ -10,10 +11,68 @@ import (
 
 	mDNS "github.com/miekg/dns"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/service"
 )
+
+// Android always registers the system store, even with no certificate overrides.
+func TestBrowserSystemCertificateStore(t *testing.T) {
+	store, err := certificate.NewStore(context.Background(), logger.NOP(), option.CertificateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	ctx := service.ContextWith[adapter.CertificateStore](context.Background(), store)
+	config, err := NewSTDClient(ctx, logger.NOP(), "browser.test", option.OutboundTLSOptions{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, config := range []Config{config, config.Clone()} {
+		client := config.(*STDClientConfig)
+		if client.config.RootCAs == nil {
+			t.Fatal("test must exercise the non-nil Android system certificate pool")
+		}
+		exported, err := client.BrowserTLSConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exported.CertificatePEM != "" || exported.ServerName != "browser.test" {
+			t.Fatalf("unexpected default certificate configuration: %+v", exported)
+		}
+		// Replacing the pool must not silently inherit system-store semantics.
+		client.config.RootCAs = x509.NewCertPool()
+		if _, err := client.BrowserTLSConfig(); err == nil {
+			t.Fatal("custom certificate pool was ignored")
+		}
+	}
+}
+
+func TestBrowserCustomCertificateStore(t *testing.T) {
+	for _, options := range []option.CertificateOptions{
+		{Store: "none"},
+		{Store: "mozilla"},
+		{Store: "chrome"},
+		{Store: "system", CertificateDirectoryPath: []string{t.TempDir()}},
+	} {
+		t.Run(options.Store, func(t *testing.T) {
+			store, err := certificate.NewStore(context.Background(), logger.NOP(), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { store.Close() })
+			ctx := service.ContextWith[adapter.CertificateStore](context.Background(), store)
+			config, err := NewSTDClient(ctx, logger.NOP(), "browser.test", option.OutboundTLSOptions{Enabled: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := config.(*STDClientConfig).BrowserTLSConfig(); err == nil || !strings.Contains(err.Error(), "custom certificate store") {
+				t.Fatalf("custom trust policy was ignored: %v", err)
+			}
+		})
+	}
+}
 
 func TestBrowserTLSOptions(t *testing.T) {
 	for _, test := range []struct {

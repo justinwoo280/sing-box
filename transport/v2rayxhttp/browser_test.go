@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ import (
 	mDNS "github.com/miekg/dns"
 	"github.com/sagernet/cronet-go"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/logger"
@@ -51,6 +53,12 @@ func TestBrowserInterop(t *testing.T) {
 			t.Run(mode+"/"+echMode, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 				defer cancel()
+				store, err := certificate.NewStore(ctx, logger.NOP(), option.CertificateOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer store.Close()
+				ctx = service.ContextWith[adapter.CertificateStore](ctx, store)
 				key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 				if err != nil {
 					t.Fatal(err)
@@ -168,6 +176,49 @@ func TestBrowserInterop(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestBrowserSystemStoreRejectsUntrustedCertificate(t *testing.T) {
+	for _, mode := range []string{"packet-up", "stream-up"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			store, err := certificate.NewStore(ctx, logger.NOP(), option.CertificateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			ctx = service.ContextWith[adapter.CertificateStore](ctx, store)
+			var requests atomic.Int32
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			tlsConfig, err := tls.NewClient(ctx, logger.NOP(), "example.com", option.OutboundTLSOptions{Enabled: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client, err := NewClient(ctx, N.SystemDialer, M.ParseSocksaddr(server.Listener.Addr().String()), option.V2RayXHTTPOptions{
+				Browser: true, V2RayXHTTPBaseOptions: option.V2RayXHTTPBaseOptions{Mode: mode, Path: "/browser"},
+			}, tlsConfig)
+			if err != nil {
+				t.Fatalf("default system store prevented client creation: %v", err)
+			}
+			defer client.Close()
+			conn, err := client.DialContext(ctx)
+			if err == nil {
+				defer conn.Close()
+				_, err = conn.Read(make([]byte, 1))
+			}
+			if err == nil || !strings.Contains(err.Error(), "ERR_CERT_AUTHORITY_INVALID") {
+				t.Fatalf("untrusted certificate was not rejected by Cronet: %v", err)
+			}
+			if requests.Load() != 0 {
+				t.Fatal("HTTP request reached an untrusted server")
+			}
+		})
 	}
 }
 
