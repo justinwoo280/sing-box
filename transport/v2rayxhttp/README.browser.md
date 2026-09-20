@@ -6,6 +6,37 @@ HTTP/2 and connection reuse. The outbound dialer supplies TCP connections and
 DNS/routing; QUIC is disabled for this integration. `xmux` settings are ignored.
 SekaiMod exposes this as `Browser Dialer` under XHTTP for VLESS and EWP profiles.
 
+## Desktop binaries
+
+The official Linux and Windows archives on the [sing-box releases page](https://github.com/SagerNet/sing-box/releases)
+are built with `with_cronet with_purego` for the supported Cronet architectures.
+They already contain the matching native library in the same directory as the
+`sing-box` executable:
+
+| Platform | Library |
+| --- | --- |
+| Linux `amd64`, `386`, `arm`, `arm64`, `riscv64`, `loong64` | `libcronet.so` |
+| Windows `amd64`, `arm64` | `libcronet.dll` |
+
+The other Linux and Windows archives use the normal build without Browser
+support because no compatible PureGo Cronet binding is published for those
+architectures.
+
+Keep the library from the same archive and architecture next to the executable.
+Do not rename it or mix it with a library from another Cronet or sing-box
+version. Browser XHTTP will report a library-loading error if the file is
+missing or incompatible. Linux package installs place `libcronet.so` in
+`/usr/bin` beside `/usr/bin/sing-box`.
+
+When using a self-built binary, build with `with_cronet with_purego` and obtain
+the matching `libcronet.so` or `libcronet.dll` from the corresponding
+[`cronet-go` native library release](https://github.com/justinwoo280/cronet-go/releases).
+The source keeps the `github.com/sagernet/cronet-go` import path for compatibility,
+but `sing-box` replaces it with the modified
+[`justinwoo280/cronet-go` fork](https://github.com/justinwoo280/cronet-go) at build time.
+The file must be copied into the same directory as `sing-box` before enabling
+`"browser": true`.
+
 ```json
 {
   "type": "xhttp",

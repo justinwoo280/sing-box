@@ -60,13 +60,13 @@ jobs:
     strategy:
       matrix:
         include:
-          - { os: linux, arch: amd64, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
-          - { os: linux, arch: "386", go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4" }
-          - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
-          - { os: linux, arch: arm64, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
-          - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
-          - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
-          - { os: linux, arch: arm, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
+          - { os: linux, arch: amd64, cronet: true, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
+          - { os: linux, arch: "386", cronet: true, go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4" }
+          - { os: linux, arch: "386", cronet: true, go386: softfloat, openwrt: "i386_pentium-mmx" }
+          - { os: linux, arch: arm64, cronet: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
+          - { os: linux, arch: arm, cronet: true, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
+          - { os: linux, arch: arm, cronet: true, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
+          - { os: linux, arch: arm, cronet: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
           - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
           - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc_24kf" }
           - { os: linux, arch: mipsle, gomips: softfloat, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
@@ -75,14 +75,14 @@ jobs:
           - { os: linux, arch: mips64le, gomips: softfloat, openwrt: "mips64el_mips64r2" }
           - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
           - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
-          - { os: linux, arch: riscv64, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
-          - { os: linux, arch: loong64, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
+          - { os: linux, arch: riscv64, cronet: true, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
+          - { os: linux, arch: loong64, cronet: true, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
 
-          - { os: windows, arch: amd64 }
+          - { os: windows, arch: amd64, cronet: true }
           - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
           - { os: windows, arch: "386" }
           - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
-          - { os: windows, arch: arm64 }
+          - { os: windows, arch: arm64, cronet: true }
 
           - { os: darwin, arch: amd64 }
           - { os: darwin, arch: arm64 }
@@ -132,6 +132,9 @@ jobs:
         run: |
           set -xeuo pipefail
           TAGS='with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale'
+          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
+            TAGS="${TAGS},with_cronet,with_purego"
+          fi
           echo "BUILD_TAGS=${TAGS}" >> "${GITHUB_ENV}"
       - name: Build
         if: matrix.os != 'android'
@@ -182,6 +185,17 @@ jobs:
           PKG_VERSION="${{ needs.calculate_version.outputs.version }}"
           PKG_VERSION="${PKG_VERSION//-/\~}"
           echo "PKG_VERSION=${PKG_VERSION}" >> "${GITHUB_ENV}"
+      - name: Stage Cronet library
+        if: matrix.cronet
+        run: |
+          set -xeuo pipefail
+          MODULE="github.com/sagernet/cronet-go/lib/${{ matrix.os }}_${{ matrix.arch }}"
+          MODULE_DIR="$(go list -m -f '{{.Dir}}' "${MODULE}")"
+          if [[ '${{ matrix.os }}' == 'windows' ]]; then
+            cp "${MODULE_DIR}/libcronet.dll" dist/libcronet.dll
+          else
+            cp "${MODULE_DIR}/libcronet.so" dist/libcronet.so
+          fi
       - name: Package DEB
         if: matrix.debian != ''
         run: |
@@ -194,11 +208,15 @@ jobs:
           retry sudo apt-get update
           retry sudo apt-get install -y debsigs
           cp .fpm_systemd .fpm
+          PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
+          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
+            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
+          fi
           fpm -t deb \
             -v "$PKG_VERSION" \
             -p "dist/sing-box_${{ needs.calculate_version.outputs.version }}_${{ matrix.os }}_${{ matrix.debian }}.deb" \
             --architecture ${{ matrix.debian }} \
-            dist/sing-box=/usr/bin/sing-box
+            "${PACKAGE_FILES[@]}"
           # debsigs needs --gpgopts support to pass the loopback pinentry
           # passphrase to gpg. Newer Debian/Ubuntu debsigs already ships it;
           # older versions need the upstream patch
@@ -224,11 +242,15 @@ jobs:
           retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i/5 failed: $*" >&2; sleep $((i*10)); done; return 1; }
           retry sudo gem install fpm
           cp .fpm_systemd .fpm
+          PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
+          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
+            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
+          fi
           fpm -t rpm \
             -v "$PKG_VERSION" \
             -p "dist/sing-box_${{ needs.calculate_version.outputs.version }}_${{ matrix.os }}_${{ matrix.rpm }}.rpm" \
             --architecture ${{ matrix.rpm }} \
-            dist/sing-box=/usr/bin/sing-box
+            "${PACKAGE_FILES[@]}"
           cat > $HOME/.rpmmacros <<EOF
           %_gpg_name ${{ secrets.GPG_KEY_ID }}
           %_gpg_sign_cmd_extra_args --pinentry-mode loopback --passphrase ${{ secrets.GPG_PASSPHRASE }}
@@ -246,11 +268,15 @@ jobs:
           retry sudo apt-get update
           retry sudo apt-get install -y libarchive-tools
           cp .fpm_systemd .fpm
+          PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
+          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
+            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
+          fi
           fpm -t pacman \
             -v "$PKG_VERSION" \
             -p "dist/sing-box_${{ needs.calculate_version.outputs.version }}_${{ matrix.os }}_${{ matrix.pacman }}.pkg.tar.zst" \
             --architecture ${{ matrix.pacman }} \
-            dist/sing-box=/usr/bin/sing-box
+            "${PACKAGE_FILES[@]}"
       - name: Package OpenWrt
         if: matrix.openwrt != ''
         run: |-
@@ -258,11 +284,15 @@ jobs:
           retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i/5 failed: $*" >&2; sleep $((i*10)); done; return 1; }
           retry sudo gem install fpm
           cp .fpm_openwrt .fpm
+          PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
+          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
+            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
+          fi
           fpm -t deb \
             -v "$PKG_VERSION" \
             -p "dist/openwrt.deb" \
             --architecture all \
-            dist/sing-box=/usr/bin/sing-box
+            "${PACKAGE_FILES[@]}"
           for architecture in ${{ matrix.openwrt }}; do
             .github/deb2ipk.sh "$architecture" "dist/openwrt.deb" "dist/sing-box_${{ needs.calculate_version.outputs.version }}_openwrt_${architecture}.ipk"
           done
@@ -275,14 +305,20 @@ jobs:
           cp ../LICENSE "${DIR_NAME}"
           if [ '${{ matrix.os }}' = 'windows' ]; then
             cp sing-box "${DIR_NAME}/sing-box.exe"
+            if [ -f libcronet.dll ]; then
+              cp libcronet.dll "${DIR_NAME}/libcronet.dll"
+            fi
             zip -r "${DIR_NAME}.zip" "${DIR_NAME}"
           else
             cp sing-box "${DIR_NAME}"
+            if [ -f libcronet.so ]; then
+              cp libcronet.so "${DIR_NAME}/libcronet.so"
+            fi
             tar -czvf "${DIR_NAME}.tar.gz" "${DIR_NAME}"
           fi
           rm -r "${DIR_NAME}"
       - name: Cleanup
-        run: rm dist/sing-box
+        run: rm -f dist/sing-box dist/libcronet.so dist/libcronet.dll
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

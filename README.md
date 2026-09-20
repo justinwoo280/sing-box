@@ -8,6 +8,11 @@ The universal proxy platform.
 
 https://sing-box.sagernet.org
 
+## Browser XHTTP
+
+Desktop Browser XHTTP support and the required Cronet native libraries are
+documented in [transport/v2rayxhttp/README.browser.md](transport/v2rayxhttp/README.browser.md).
+
 ## License
 
 ```
