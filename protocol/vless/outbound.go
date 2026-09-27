@@ -76,6 +76,12 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			return nil, E.Cause(err, "create client transport: ", options.Transport.Type)
 		}
 	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = outbound.Close()
+		}
+	}()
 	if options.PacketEncoding == nil {
 		outbound.xudp = true
 	} else {
@@ -101,6 +107,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, err
 	}
+	initialized = true
 	return outbound, nil
 }
 
@@ -172,24 +179,39 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
 		h.logger.InfoContext(ctx, "outbound connection to ", destination)
-		return h.client.DialEarlyConn(conn, destination)
+		clientConn, err := h.client.DialEarlyConn(conn, destination)
+		if err != nil {
+			common.Close(conn)
+		}
+		return clientConn, err
 	case N.NetworkUDP:
 		h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
 		if h.xudp {
-			return h.client.DialEarlyXUDPPacketConn(conn, destination)
+			packetConn, err := h.client.DialEarlyXUDPPacketConn(conn, destination)
+			if err != nil {
+				common.Close(conn)
+			}
+			return packetConn, err
 		} else if h.packetAddr {
 			if destination.IsDomain() {
+				common.Close(conn)
 				return nil, E.New("packetaddr: domain destination is not supported")
 			}
 			packetConn, err := h.client.DialEarlyPacketConn(conn, M.Socksaddr{Fqdn: packetaddr.SeqPacketMagicAddress})
 			if err != nil {
+				common.Close(conn)
 				return nil, err
 			}
 			return bufio.NewBindPacketConn(packetaddr.NewConn(packetConn, destination), destination), nil
 		} else {
-			return h.client.DialEarlyPacketConn(conn, destination)
+			packetConn, err := h.client.DialEarlyPacketConn(conn, destination)
+			if err != nil {
+				common.Close(conn)
+			}
+			return packetConn, err
 		}
 	default:
+		common.Close(conn)
 		return nil, E.Extend(N.ErrUnknownNetwork, network)
 	}
 }
@@ -213,17 +235,27 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		return nil, err
 	}
 	if h.xudp {
-		return h.client.DialEarlyXUDPPacketConn(conn, destination)
+		packetConn, err := h.client.DialEarlyXUDPPacketConn(conn, destination)
+		if err != nil {
+			common.Close(conn)
+		}
+		return packetConn, err
 	} else if h.packetAddr {
 		if destination.IsDomain() {
+			common.Close(conn)
 			return nil, E.New("packetaddr: domain destination is not supported")
 		}
-		conn, err := h.client.DialEarlyPacketConn(conn, M.Socksaddr{Fqdn: packetaddr.SeqPacketMagicAddress})
+		packetConn, err := h.client.DialEarlyPacketConn(conn, M.Socksaddr{Fqdn: packetaddr.SeqPacketMagicAddress})
 		if err != nil {
+			common.Close(conn)
 			return nil, err
 		}
-		return packetaddr.NewConn(conn, destination), nil
+		return packetaddr.NewConn(packetConn, destination), nil
 	} else {
-		return h.client.DialEarlyPacketConn(conn, destination)
+		packetConn, err := h.client.DialEarlyPacketConn(conn, destination)
+		if err != nil {
+			common.Close(conn)
+		}
+		return packetConn, err
 	}
 }

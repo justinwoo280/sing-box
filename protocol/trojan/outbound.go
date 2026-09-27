@@ -73,10 +73,17 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			return nil, E.Cause(err, "create client transport: ", options.Transport.Type)
 		}
 	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = outbound.Close()
+		}
+	}()
 	outbound.multiplexDialer, err = mux.NewClientWithOptions((*trojanDialer)(outbound), logger, common.PtrValueOrDefault(options.Multiplex))
 	if err != nil {
 		return nil, err
 	}
+	initialized = true
 	return outbound, nil
 }
 
@@ -152,6 +159,7 @@ func (h *trojanDialer) DialContext(ctx context.Context, network string, destinat
 	case N.NetworkUDP:
 		return bufio.NewBindPacketConn(trojan.NewClientPacketConn(conn, h.key), destination), nil
 	default:
+		common.Close(conn)
 		return nil, E.Extend(N.ErrUnknownNetwork, network)
 	}
 }

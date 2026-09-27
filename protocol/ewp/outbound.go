@@ -70,11 +70,18 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			return nil, E.Cause(err, "create client transport: ", options.Transport.Type)
 		}
 	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = o.Close()
+		}
+	}()
 	o.client, err = sewp.NewClientV23(options.UUID, options.ServerID, options.ServerPublicKey, options.RouteEpoch)
 	if err != nil {
 		return nil, E.Cause(err, "parse EWP/v2.3 client config")
 	}
 	o.client.SetTicketStore(sewp.NewMemoryV23TicketStore())
+	initialized = true
 	return o, nil
 }
 

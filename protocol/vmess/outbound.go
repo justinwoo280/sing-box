@@ -72,6 +72,12 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			return nil, E.Cause(err, "create client transport: ", options.Transport.Type)
 		}
 	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = outbound.Close()
+		}
+	}()
 	outbound.multiplexDialer, err = mux.NewClientWithOptions((*vmessDialer)(outbound), logger, common.PtrValueOrDefault(options.Multiplex))
 	if err != nil {
 		return nil, err
@@ -107,6 +113,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 	outbound.client = client
+	initialized = true
 	return outbound, nil
 }
 
@@ -182,6 +189,7 @@ func (h *vmessDialer) DialContext(ctx context.Context, network string, destinati
 	case N.NetworkUDP:
 		return h.client.DialEarlyPacketConn(conn, destination), nil
 	default:
+		common.Close(conn)
 		return nil, E.Extend(N.ErrUnknownNetwork, network)
 	}
 }
@@ -204,6 +212,7 @@ func (h *vmessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 	}
 	if h.packetAddr {
 		if destination.IsDomain() {
+			common.Close(conn)
 			return nil, E.New("packetaddr: domain destination is not supported")
 		}
 		return packetaddr.NewConn(h.client.DialEarlyPacketConn(conn, M.Socksaddr{Fqdn: packetaddr.SeqPacketMagicAddress}), destination), nil
