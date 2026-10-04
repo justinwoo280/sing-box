@@ -11,8 +11,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
+	"github.com/sagernet/sing-box/transport/v2rayhttp"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -77,6 +76,21 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	var upgraded net.Conn
+	err = v2rayhttp.HandshakeContext(ctx, conn, func() error {
+		upgraded, err = c.upgrade(conn)
+		return err
+	})
+	if err != nil {
+		if upgraded != nil {
+			upgraded.Close()
+		}
+		return nil, err
+	}
+	return upgraded, nil
+}
+
+func (c *Client) upgrade(conn net.Conn) (net.Conn, error) {
 	request := &http.Request{
 		Method: http.MethodGet,
 		URL:    &c.requestURL,
@@ -85,7 +99,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	}
 	request.Header.Set("Connection", "Upgrade")
 	request.Header.Set("Upgrade", "websocket")
-	err = request.Write(conn)
+	err := request.Write(conn)
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -103,16 +117,12 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		response.Body.Close()
 		return nil, E.New("v2ray-http-upgrade: unexpected status: ", response.Status)
 	}
-	if bufReader.Buffered() > 0 {
-		buffer := buf.NewSize(bufReader.Buffered())
-		_, err = buffer.ReadFullFrom(bufReader, buffer.Len())
-		if err != nil {
-			conn.Close()
-			return nil, err
-		}
-		conn = bufio.NewCachedConn(conn, buffer)
+	bufferedConn, err := v2rayhttp.CacheBufferedConn(conn, bufReader)
+	if err != nil {
+		conn.Close()
+		return nil, err
 	}
-	return conn, nil
+	return bufferedConn, nil
 }
 
 func (c *Client) Close() error {

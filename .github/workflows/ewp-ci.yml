@@ -1,7 +1,7 @@
 name: EWP CI
 
 # Lightweight CI for the EWP fork: build the codebase with the
-# standard matsuri build tags, run the EWP package tests, and run
+# standard matsuri build tags, run the EWP and transport tests, and run
 # go vet on the EWP-specific packages. Runs on every push and PR
 # regardless of branch — independent of the upstream build.yml /
 # lint.yml gating so this fork's day-to-day work always gets exercised.
@@ -58,3 +58,9 @@ jobs:
           go vet \
             -tags 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale' \
             ./protocol/ewp/... ./option/... ./common/tls/...
+
+      - name: Race test transports
+        run: |
+          go test -race -count=1 -timeout=2m \
+            -tags 'with_gvisor,with_quic,with_wireguard,with_utls,with_grpc' \
+            ./transport/...

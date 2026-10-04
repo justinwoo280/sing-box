@@ -107,12 +107,18 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		s.invalidRequest(writer, request, http.StatusInternalServerError, E.New("invalid connection, maybe HTTP/2"))
 		return
 	}
-	conn, _, err := hijacker.Hijack()
+	conn, reader, err := hijacker.Hijack()
 	if err != nil {
 		s.invalidRequest(writer, request, http.StatusInternalServerError, E.Cause(err, "hijack failed"))
 		return
 	}
-	s.handler.NewConnectionEx(v2rayhttp.DupContext(request.Context()), conn, sHttp.SourceAddress(request), M.Socksaddr{}, nil)
+	bufferedConn, err := v2rayhttp.CacheBufferedConn(conn, reader.Reader)
+	if err != nil {
+		conn.Close()
+		s.invalidRequest(writer, request, 0, E.Cause(err, "read cache"))
+		return
+	}
+	s.handler.NewConnectionEx(v2rayhttp.DupContext(request.Context()), bufferedConn, sHttp.SourceAddress(request), M.Socksaddr{}, nil)
 }
 
 func (s *Server) invalidRequest(writer http.ResponseWriter, request *http.Request, statusCode int, err error) {

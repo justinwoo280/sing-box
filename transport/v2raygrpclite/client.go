@@ -78,6 +78,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 }
 
 func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	pipeInReader, pipeInWriter := io.Pipe()
 	request := &http.Request{
 		Method: http.MethodPost,
@@ -88,6 +89,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	}
 	request = request.WithContext(ctx)
 	conn := newLateGunConn(pipeInWriter)
+	conn.cancel = cancel
 	go func() {
 		response, err := c.transport.RoundTrip(request)
 		if err != nil {

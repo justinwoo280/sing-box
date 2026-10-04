@@ -16,23 +16,26 @@ var _ net.Conn = (*GRPCConn)(nil)
 
 type GRPCConn struct {
 	GunService
-	cache     []byte
-	cancel    context.CancelCauseFunc
-	closeOnce sync.Once
+	cache       []byte
+	cancel      context.CancelCauseFunc
+	closeOnce   sync.Once
+	readAccess  sync.Mutex
+	writeAccess sync.Mutex
 }
 
 func NewGRPCConn(service GunService, cancel context.CancelCauseFunc) *GRPCConn {
+	conn := &GRPCConn{cancel: cancel}
 	//nolint:staticcheck
 	if client, isClient := service.(GunService_TunClient); isClient {
-		service = &clientConnWrapper{client}
+		service = &clientConnWrapper{GunService_TunClient: client, access: &conn.writeAccess}
 	}
-	return &GRPCConn{
-		GunService: service,
-		cancel:     cancel,
-	}
+	conn.GunService = service
+	return conn
 }
 
 func (c *GRPCConn) Read(b []byte) (n int, err error) {
+	c.readAccess.Lock()
+	defer c.readAccess.Unlock()
 	if len(c.cache) > 0 {
 		n = copy(b, c.cache)
 		c.cache = c.cache[n:]
@@ -51,6 +54,8 @@ func (c *GRPCConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *GRPCConn) Write(b []byte) (n int, err error) {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
 	err = baderror.WrapGRPC(c.Send(&Hunk{Data: b}))
 	if err != nil {
 		return
@@ -99,8 +104,11 @@ var _ N.WriteCloser = (*clientConnWrapper)(nil)
 
 type clientConnWrapper struct {
 	GunService_TunClient
+	access *sync.Mutex
 }
 
 func (c *clientConnWrapper) CloseWrite() error {
+	c.access.Lock()
+	defer c.access.Unlock()
 	return c.CloseSend()
 }

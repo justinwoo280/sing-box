@@ -16,7 +16,6 @@ import (
 	"github.com/sagernet/sing-box/transport/v2rayhttp"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -105,15 +104,21 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		s.invalidRequest(writer, request, http.StatusBadRequest, E.Cause(err, "decode early data"))
 		return
 	}
-	wsConn, _, _, err := ws.UpgradeHTTP(request, writer)
+	wsConn, reader, _, err := ws.UpgradeHTTP(request, writer)
 	if err != nil {
 		s.invalidRequest(writer, request, 0, E.Cause(err, "upgrade websocket connection"))
 		return
 	}
+	bufferedConn, err := v2rayhttp.CacheBufferedConn(wsConn, reader.Reader)
+	if err != nil {
+		wsConn.Close()
+		s.invalidRequest(writer, request, 0, E.Cause(err, "read cache"))
+		return
+	}
 	source := sHttp.SourceAddress(request)
-	conn = NewConn(wsConn, source, ws.StateServerSide)
+	conn = NewConn(bufferedConn, source, ws.StateServerSide)
 	if len(earlyData) > 0 {
-		conn = bufio.NewCachedConn(conn, buf.As(earlyData))
+		conn = v2rayhttp.NewCachedConn(conn, buf.As(earlyData))
 	}
 	s.handler.NewConnectionEx(v2rayhttp.DupContext(request.Context()), conn, source, M.Socksaddr{}, nil)
 }

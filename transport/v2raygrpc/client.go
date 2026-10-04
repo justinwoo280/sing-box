@@ -112,6 +112,8 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 }
 
 func (c *Client) Close() error {
+	c.connAccess.Lock()
+	defer c.connAccess.Unlock()
 	conn := c.conn.Swap(nil)
 	if conn != nil {
 		conn.Close()

@@ -13,11 +13,15 @@ import (
 var _ N.PacketReadWaiter = (*ClientPacketConn)(nil)
 
 func (c *ClientPacketConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	c.readAccess.Lock()
+	defer c.readAccess.Unlock()
 	c.readWaitOptions = options
 	return false
 }
 
 func (c *ClientPacketConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
+	c.readAccess.Lock()
+	defer c.readAccess.Unlock()
 	destination, err = M.SocksaddrSerializer.ReadAddrPort(c.Conn)
 	if err != nil {
 		return nil, M.Socksaddr{}, E.Cause(err, "read destination")

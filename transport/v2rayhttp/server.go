@@ -15,7 +15,6 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -110,6 +109,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			requestBody = buf.NewSize(contentLength)
 			_, err := requestBody.ReadFullFrom(request.Body, contentLength)
 			if err != nil {
+				requestBody.Release()
 				s.invalidRequest(writer, request, 0, E.Cause(err, "read request"))
 				return
 			}
@@ -118,23 +118,21 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		writer.(http.Flusher).Flush()
 		conn, reader, err := h.Hijack()
 		if err != nil {
+			requestBody.Release()
 			s.invalidRequest(writer, request, 0, E.Cause(err, "hijack conn"))
 			return
 		}
-		if cacheLen := reader.Reader.Buffered(); cacheLen > 0 {
-			cache := buf.NewSize(cacheLen)
-			_, err = cache.ReadFullFrom(reader.Reader, cacheLen)
-			if err != nil {
-				conn.Close()
-				s.invalidRequest(writer, request, 0, E.Cause(err, "read cache"))
-				return
-			}
-			conn = bufio.NewCachedConn(conn, cache)
+		bufferedConn, err := CacheBufferedConn(conn, reader.Reader)
+		if err != nil {
+			conn.Close()
+			requestBody.Release()
+			s.invalidRequest(writer, request, 0, E.Cause(err, "read cache"))
+			return
 		}
 		if requestBody != nil {
-			conn = bufio.NewCachedConn(conn, requestBody)
+			bufferedConn = NewCachedConn(bufferedConn, requestBody)
 		}
-		s.handler.NewConnectionEx(DupContext(request.Context()), conn, source, M.Socksaddr{}, nil)
+		s.handler.NewConnectionEx(DupContext(request.Context()), bufferedConn, source, M.Socksaddr{}, nil)
 	} else {
 		writer.WriteHeader(http.StatusOK)
 		flusher := writer.(http.Flusher)

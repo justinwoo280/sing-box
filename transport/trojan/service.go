@@ -1,8 +1,10 @@
 package trojan
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"io"
 	"net"
 
 	"github.com/sagernet/sing/common/auth"
@@ -65,7 +67,21 @@ func (s *Service[K]) NewConnection(ctx context.Context, conn net.Conn, source M.
 	if err != nil {
 		return err
 	} else if n != KeyLength {
-		return s.fallback(ctx, conn, source, key[:n], E.New("bad request size"), onClose)
+		// Preserve immediate fallback for other traffic, but complete a
+		// fragmented key when its prefix belongs to a configured user.
+		var matchedPrefix bool
+		for userKey := range s.keys {
+			if bytes.Equal(userKey[:n], key[:n]) {
+				matchedPrefix = true
+				break
+			}
+		}
+		if !matchedPrefix {
+			return s.fallback(ctx, conn, source, key[:n], E.New("bad request size"), onClose)
+		}
+		if _, err = io.ReadFull(conn, key[n:]); err != nil {
+			return err
+		}
 	}
 
 	if user, loaded := s.keys[key]; loaded {

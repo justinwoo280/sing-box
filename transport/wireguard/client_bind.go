@@ -24,17 +24,21 @@ type ClientBind struct {
 	ctx                 context.Context
 	logger              logger.Logger
 	pauseManager        pause.Manager
-	bindCtx             context.Context
-	bindDone            context.CancelFunc
+	access              sync.Mutex
+	state               *bindState
 	dialer              N.Dialer
 	reservedAccess      sync.RWMutex
 	reservedForEndpoint map[netip.AddrPort][3]uint8
-	connAccess          sync.Mutex
-	conn                *wireConn
-	done                chan struct{}
 	isConnect           bool
 	connectAddr         netip.AddrPort
 	reserved            [3]uint8
+}
+
+type bindState struct {
+	ctx        context.Context
+	cancel     context.CancelFunc
+	connAccess sync.Mutex
+	conn       *wireConn
 }
 
 func NewClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, isConnect bool, connectAddr netip.AddrPort, reserved [3]uint8) *ClientBind {
@@ -44,7 +48,6 @@ func NewClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, i
 		pauseManager:        service.FromContext[pause.Manager](ctx),
 		dialer:              dialer,
 		reservedForEndpoint: make(map[netip.AddrPort][3]uint8),
-		done:                make(chan struct{}),
 		isConnect:           isConnect,
 		connectAddr:         connectAddr,
 		reserved:            reserved,
@@ -52,23 +55,24 @@ func NewClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, i
 }
 
 func (c *ClientBind) connect() (*wireConn, error) {
-	serverConn := c.conn
-	if serverConn != nil {
-		select {
-		case <-serverConn.done:
-			serverConn = nil
-		default:
-			return serverConn, nil
-		}
+	c.access.Lock()
+	state := c.state
+	c.access.Unlock()
+	return c.connectState(state)
+}
+
+func (c *ClientBind) connectState(state *bindState) (*wireConn, error) {
+	if state == nil {
+		return nil, net.ErrClosed
 	}
-	c.connAccess.Lock()
-	defer c.connAccess.Unlock()
+	state.connAccess.Lock()
+	defer state.connAccess.Unlock()
 	select {
-	case <-c.done:
+	case <-state.ctx.Done():
 		return nil, net.ErrClosed
 	default:
 	}
-	serverConn = c.conn
+	serverConn := state.conn
 	if serverConn != nil {
 		select {
 		case <-serverConn.done:
@@ -78,56 +82,63 @@ func (c *ClientBind) connect() (*wireConn, error) {
 		}
 	}
 	if c.isConnect {
-		udpConn, err := c.dialer.DialContext(c.bindCtx, N.NetworkUDP, M.SocksaddrFromNetIP(c.connectAddr))
+		udpConn, err := c.dialer.DialContext(state.ctx, N.NetworkUDP, M.SocksaddrFromNetIP(c.connectAddr))
 		if err != nil {
 			return nil, err
 		}
-		c.conn = &wireConn{
+		state.conn = &wireConn{
 			PacketConn: bufio.NewUnbindPacketConn(udpConn),
 			done:       make(chan struct{}),
 		}
 	} else {
-		udpConn, err := c.dialer.ListenPacket(c.bindCtx, M.Socksaddr{Addr: netip.IPv4Unspecified()})
+		udpConn, err := c.dialer.ListenPacket(state.ctx, M.Socksaddr{Addr: netip.IPv4Unspecified()})
 		if err != nil {
 			return nil, err
 		}
-		c.conn = &wireConn{
+		state.conn = &wireConn{
 			PacketConn: bufio.NewPacketConn(udpConn),
 			done:       make(chan struct{}),
 		}
 	}
-	return c.conn, nil
+	if common.Done(state.ctx) {
+		state.conn.Close()
+		return nil, net.ErrClosed
+	}
+	return state.conn, nil
 }
 
 func (c *ClientBind) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
-	select {
-	case <-c.done:
-		c.done = make(chan struct{})
-	default:
+	c.access.Lock()
+	defer c.access.Unlock()
+	if c.state != nil {
+		return nil, 0, conn.ErrBindAlreadyOpen
 	}
-	c.bindCtx, c.bindDone = context.WithCancel(c.ctx)
-	return []conn.ReceiveFunc{c.receive}, 0, nil
+	ctx, cancel := context.WithCancel(c.ctx)
+	state := &bindState{ctx: ctx, cancel: cancel}
+	c.state = state
+	return []conn.ReceiveFunc{func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
+		return c.receive(state, packets, sizes, eps)
+	}}, 0, nil
 }
 
-func (c *ClientBind) receive(packets [][]byte, sizes []int, eps []conn.Endpoint) (count int, err error) {
-	udpConn, err := c.connect()
+func (c *ClientBind) receive(state *bindState, packets [][]byte, sizes []int, eps []conn.Endpoint) (count int, err error) {
+	udpConn, err := c.connectState(state)
 	if err != nil {
 		select {
-		case <-c.done:
-			return
+		case <-state.ctx.Done():
+			return 0, net.ErrClosed
 		default:
 		}
 		c.logger.Error(E.Cause(err, "connect to server"))
-		err = nil
-		c.pauseManager.WaitActive()
-		time.Sleep(time.Second)
+		err = c.waitRetry(state.ctx)
 		return
 	}
 	n, addr, err := udpConn.ReadFrom(packets[0])
 	if err != nil {
 		udpConn.Close()
 		select {
-		case <-c.done:
+		case <-state.ctx.Done():
+			err = net.ErrClosed
 		default:
 			c.logger.Error(E.Cause(err, "read packet"))
 			err = nil
@@ -145,17 +156,18 @@ func (c *ClientBind) receive(packets [][]byte, sizes []int, eps []conn.Endpoint)
 }
 
 func (c *ClientBind) Close() error {
-	select {
-	case <-c.done:
-	default:
-		close(c.done)
+	c.access.Lock()
+	state := c.state
+	c.state = nil
+	if state != nil {
+		state.cancel()
 	}
-	if c.bindDone != nil {
-		c.bindDone()
+	c.access.Unlock()
+	if state != nil {
+		state.connAccess.Lock()
+		common.Close(common.PtrOrNil(state.conn))
+		state.connAccess.Unlock()
 	}
-	c.connAccess.Lock()
-	defer c.connAccess.Unlock()
-	common.Close(common.PtrOrNil(c.conn))
 	return nil
 }
 
@@ -164,10 +176,15 @@ func (c *ClientBind) SetMark(mark uint32) error {
 }
 
 func (c *ClientBind) Send(bufs [][]byte, ep conn.Endpoint, offset int) error {
-	udpConn, err := c.connect()
+	c.access.Lock()
+	state := c.state
+	c.access.Unlock()
+	udpConn, err := c.connectState(state)
 	if err != nil {
-		c.pauseManager.WaitActive()
-		time.Sleep(time.Second)
+		if state == nil || common.Done(state.ctx) {
+			return net.ErrClosed
+		}
+		c.waitRetry(state.ctx)
 		return err
 	}
 	destination := netip.AddrPort(ep.(remoteEndpoint))
@@ -191,6 +208,34 @@ func (c *ClientBind) Send(bufs [][]byte, ep conn.Endpoint, offset int) error {
 		}
 	}
 	return nil
+}
+
+func (c *ClientBind) waitRetry(ctx context.Context) error {
+	if c.pauseManager != nil {
+		wake := make(chan struct{}, 1)
+		callback := c.pauseManager.RegisterCallback(func(int) {
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+		})
+		defer c.pauseManager.UnregisterCallback(callback)
+		for c.pauseManager.IsDevicePaused() || c.pauseManager.IsNetworkPaused() {
+			select {
+			case <-ctx.Done():
+				return net.ErrClosed
+			case <-wake:
+			}
+		}
+	}
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return net.ErrClosed
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *ClientBind) ParseEndpoint(s string) (conn.Endpoint, error) {

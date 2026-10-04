@@ -12,8 +12,7 @@ import (
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
+	"github.com/sagernet/sing-box/transport/v2rayhttp"
 	"github.com/sagernet/sing/common/bufio/deadline"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
@@ -79,16 +78,35 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		return nil, err
 	}
 	if c.maxEarlyData > 0 {
-		return &EarlyWebsocketConn{Client: c, rawConn: conn, create: make(chan struct{})}, nil
+		// The dial is complete; callers may cancel its context before the first
+		// write. Close on rawConn still interrupts the deferred handshake.
+		return &EarlyWebsocketConn{Client: c, ctx: context.WithoutCancel(ctx), rawConn: conn, create: make(chan struct{})}, nil
 	}
-	websocketConn, err := c.upgrade(conn, &c.requestURL, c.headers)
+	websocketConn, err := c.upgrade(ctx, conn, &c.requestURL, c.headers)
 	if err != nil {
 		return nil, err
 	}
 	return websocketConn, nil
 }
 
-func (c *Client) upgrade(conn net.Conn, requestURL *url.URL, headers http.Header) (*WebsocketConn, error) {
+func (c *Client) upgrade(ctx context.Context, conn net.Conn, requestURL *url.URL, headers http.Header) (*WebsocketConn, error) {
+	var upgraded *WebsocketConn
+	err := v2rayhttp.HandshakeContext(ctx, conn, func() error {
+		var err error
+		upgraded, err = c.upgradeConn(conn, requestURL, headers)
+		return err
+	})
+	if err != nil {
+		if upgraded != nil {
+			upgraded.Close()
+		}
+		return nil, err
+	}
+	return upgraded, nil
+}
+
+func (c *Client) upgradeConn(conn net.Conn, requestURL *url.URL, headers http.Header) (*WebsocketConn, error) {
+	headers = headers.Clone()
 	var deadlineConn net.Conn
 	if deadline.NeedAdditionalReadDeadline(conn) {
 		deadlineConn = deadline.NewConn(conn)
@@ -108,13 +126,13 @@ func (c *Client) upgrade(conn net.Conn, requestURL *url.URL, headers http.Header
 		return nil, err
 	}
 	if reader != nil {
-		buffer := buf.NewSize(reader.Buffered())
-		_, err = buffer.ReadFullFrom(reader, buffer.Len())
+		defer ws.PutReader(reader)
+		bufferedConn, err := v2rayhttp.CacheBufferedConn(conn, reader)
 		if err != nil {
 			conn.Close()
 			return nil, err
 		}
-		conn = bufio.NewCachedConn(conn, buffer)
+		conn = bufferedConn
 	}
 	return NewConn(conn, nil, ws.StateClientSide), nil
 }

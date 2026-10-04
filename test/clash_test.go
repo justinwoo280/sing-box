@@ -407,6 +407,7 @@ func testLargeDataWithPacketConnSize(t *testing.T, port uint16, chunkSize int, p
 
 	go func() {
 		var rAddr net.Addr
+		var err error
 		hashMap := map[int][]byte{}
 		buf := make([]byte, 64*1024)
 

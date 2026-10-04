@@ -119,6 +119,7 @@ func (c *Client) dialHTTP(ctx context.Context) (net.Conn, error) {
 }
 
 func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	pipeInReader, pipeInWriter := io.Pipe()
 	request := &http.Request{
 		Method: c.method,
@@ -137,6 +138,7 @@ func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
 		request.Host = c.host[rand.Intn(hostLen)]
 	}
 	conn := NewLateHTTPConn(pipeInWriter)
+	conn.cancel = cancel
 	go func() {
 		response, err := c.transport.RoundTrip(request)
 		if err != nil {
@@ -152,6 +154,8 @@ func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
 }
 
 func (c *Client) Close() error {
-	c.transport = ResetTransport(c.transport)
+	// Close is also used to reset connections after a network change. Keep the
+	// transport published to dialers immutable; HTTP/1 dials use the dialer directly.
+	ResetTransport(c.transport)
 	return nil
 }

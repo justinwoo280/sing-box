@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -32,7 +33,8 @@ type ClientConn struct {
 	N.ExtendedConn
 	key           [KeyLength]byte
 	destination   M.Socksaddr
-	headerWritten bool
+	headerWritten atomic.Bool
+	writeAccess   sync.Mutex
 }
 
 func NewClientConn(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr) *ClientConn {
@@ -44,11 +46,13 @@ func NewClientConn(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr) 
 }
 
 func (c *ClientConn) NeedHandshakeForWrite() bool {
-	return !c.headerWritten
+	return !c.headerWritten.Load()
 }
 
 func (c *ClientConn) Write(p []byte) (n int, err error) {
-	if c.headerWritten {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+	if c.headerWritten.Load() {
 		return c.ExtendedConn.Write(p)
 	}
 	err = ClientHandshake(c.ExtendedConn, c.key, c.destination, p)
@@ -56,24 +60,26 @@ func (c *ClientConn) Write(p []byte) (n int, err error) {
 		return
 	}
 	n = len(p)
-	c.headerWritten = true
+	c.headerWritten.Store(true)
 	return
 }
 
 func (c *ClientConn) WriteBuffer(buffer *buf.Buffer) error {
-	if c.headerWritten {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+	if c.headerWritten.Load() {
 		return c.ExtendedConn.WriteBuffer(buffer)
 	}
 	err := ClientHandshakeBuffer(c.ExtendedConn, c.key, c.destination, buffer)
 	if err != nil {
 		return err
 	}
-	c.headerWritten = true
+	c.headerWritten.Store(true)
 	return nil
 }
 
 func (c *ClientConn) FrontHeadroom() int {
-	if !c.headerWritten {
+	if !c.headerWritten.Load() {
 		return KeyLength + 5 + M.MaxSocksaddrLength
 	}
 	return 0
@@ -84,18 +90,19 @@ func (c *ClientConn) Upstream() any {
 }
 
 func (c *ClientConn) ReaderReplaceable() bool {
-	return c.headerWritten
+	return c.headerWritten.Load()
 }
 
 func (c *ClientConn) WriterReplaceable() bool {
-	return c.headerWritten
+	return c.headerWritten.Load()
 }
 
 type ClientPacketConn struct {
 	net.Conn
 	access          sync.Mutex
+	readAccess      sync.Mutex
 	key             [KeyLength]byte
-	headerWritten   bool
+	headerWritten   atomic.Bool
 	readWaitOptions N.ReadWaitOptions
 }
 
@@ -107,24 +114,24 @@ func NewClientPacketConn(conn net.Conn, key [KeyLength]byte) *ClientPacketConn {
 }
 
 func (c *ClientPacketConn) NeedHandshake() bool {
-	return !c.headerWritten
+	return !c.headerWritten.Load()
 }
 
 func (c *ClientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+	c.readAccess.Lock()
+	defer c.readAccess.Unlock()
 	return ReadPacket(c.Conn, buffer)
 }
 
 func (c *ClientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	if !c.headerWritten {
-		c.access.Lock()
-		if c.headerWritten {
-			c.access.Unlock()
-		} else {
-			err := ClientHandshakePacket(c.Conn, c.key, destination, buffer)
-			c.headerWritten = true
-			c.access.Unlock()
-			return err
+	c.access.Lock()
+	defer c.access.Unlock()
+	if !c.headerWritten.Load() {
+		err := ClientHandshakePacket(c.Conn, c.key, destination, buffer)
+		if err == nil {
+			c.headerWritten.Store(true)
 		}
+		return err
 	}
 	return WritePacket(c.Conn, buffer, destination)
 }
@@ -158,7 +165,7 @@ func (c *ClientPacketConn) Write(p []byte) (n int, err error) {
 }
 
 func (c *ClientPacketConn) FrontHeadroom() int {
-	if !c.headerWritten {
+	if !c.headerWritten.Load() {
 		return KeyLength + 2*M.MaxSocksaddrLength + 9
 	}
 	return M.MaxSocksaddrLength + 4
@@ -227,6 +234,7 @@ func ClientHandshake(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr
 }
 
 func ClientHandshakeBuffer(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr, payload *buf.Buffer) error {
+	defer payload.Release()
 	header := buf.With(payload.ExtendHeader(KeyLength + M.SocksaddrSerializer.AddrPortLen(destination) + 5))
 	common.Must1(header.Write(key[:]))
 	common.Must1(header.Write(CRLF))
@@ -245,6 +253,7 @@ func ClientHandshakeBuffer(conn net.Conn, key [KeyLength]byte, destination M.Soc
 }
 
 func ClientHandshakePacket(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr, payload *buf.Buffer) error {
+	defer payload.Release()
 	headerLen := KeyLength + 2*M.SocksaddrSerializer.AddrPortLen(destination) + 9
 	payloadLen := payload.Len()
 	var header *buf.Buffer

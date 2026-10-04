@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"sync"
 
 	B "github.com/sagernet/sing/common/buf"
 )
@@ -21,9 +22,13 @@ type HTTPObfs struct {
 	offset        int
 	firstRequest  bool
 	firstResponse bool
+	readAccess    sync.Mutex
+	writeAccess   sync.Mutex
 }
 
 func (ho *HTTPObfs) Read(b []byte) (int, error) {
+	ho.readAccess.Lock()
+	defer ho.readAccess.Unlock()
 	if ho.buf != nil {
 		n := copy(b, ho.buf[ho.offset:])
 		ho.offset += n
@@ -61,6 +66,8 @@ func (ho *HTTPObfs) Read(b []byte) (int, error) {
 }
 
 func (ho *HTTPObfs) Write(b []byte) (int, error) {
+	ho.writeAccess.Lock()
+	defer ho.writeAccess.Unlock()
 	if ho.firstRequest {
 		randBytes := make([]byte, 16)
 		rand.Read(randBytes)

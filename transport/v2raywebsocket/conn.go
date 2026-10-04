@@ -1,6 +1,7 @@
 package v2raywebsocket
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -26,39 +27,58 @@ type WebsocketConn struct {
 	reader         *wsutil.Reader
 	controlHandler wsutil.FrameHandlerFunc
 	remoteAddr     net.Addr
+	readAccess     sync.Mutex
+	writeAccess    sync.Mutex
+	closed         atomic.Bool
 }
 
 func NewConn(conn net.Conn, remoteAddr net.Addr, state ws.State) *WebsocketConn {
-	controlHandler := wsutil.ControlFrameHandler(conn, state)
-	return &WebsocketConn{
+	c := &WebsocketConn{
 		Conn:  conn,
 		state: state,
 		reader: &wsutil.Reader{
 			Source:          conn,
 			State:           state,
 			SkipHeaderCheck: !debug.Enabled,
-			OnIntermediate:  controlHandler,
 		},
-		controlHandler: controlHandler,
-		remoteAddr:     remoteAddr,
-		Writer:         NewWriter(conn, state),
+		remoteAddr: remoteAddr,
+		Writer:     NewWriter(conn, state),
 	}
+	controlHandler := wsutil.ControlFrameHandler(conn, state)
+	c.controlHandler = func(header ws.Header, reader io.Reader) error {
+		c.writeAccess.Lock()
+		defer c.writeAccess.Unlock()
+		if c.closed.Load() {
+			return net.ErrClosed
+		}
+		return controlHandler(header, reader)
+	}
+	c.reader.OnIntermediate = c.controlHandler
+	return c
 }
 
 func (c *WebsocketConn) Close() error {
-	c.Conn.SetWriteDeadline(time.Now().Add(C.TCPTimeout))
-	frame := ws.NewCloseFrame(ws.NewCloseFrameBody(
-		ws.StatusNormalClosure, "",
-	))
-	if c.state == ws.StateClientSide {
-		frame = ws.MaskFrameInPlace(frame)
+	if c.closed.Swap(true) {
+		return nil
 	}
-	ws.WriteFrame(c.Conn, frame)
+	// A blocked data write must be interrupted by closing the socket. Sending a
+	// close frame concurrently would insert it into the unfinished data frame.
+	if c.writeAccess.TryLock() {
+		c.Conn.SetWriteDeadline(time.Now().Add(C.TCPTimeout))
+		frame := ws.NewCloseFrame(ws.NewCloseFrameBody(ws.StatusNormalClosure, ""))
+		if c.state == ws.StateClientSide {
+			frame = ws.MaskFrameInPlace(frame)
+		}
+		ws.WriteFrame(c.Conn, frame)
+		c.writeAccess.Unlock()
+	}
 	c.Conn.Close()
 	return nil
 }
 
 func (c *WebsocketConn) Read(b []byte) (n int, err error) {
+	c.readAccess.Lock()
+	defer c.readAccess.Unlock()
 	var header ws.Header
 	for {
 		n, err = c.reader.Read(b)
@@ -96,12 +116,27 @@ func (c *WebsocketConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *WebsocketConn) Write(p []byte) (n int, err error) {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+	if c.closed.Load() {
+		return 0, net.ErrClosed
+	}
 	err = wrapWsError(wsutil.WriteMessage(c.Conn, c.state, ws.OpBinary, p))
 	if err != nil {
 		return
 	}
 	n = len(p)
 	return
+}
+
+func (c *WebsocketConn) WriteBuffer(buffer *buf.Buffer) error {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+	if c.closed.Load() {
+		buffer.Release()
+		return net.ErrClosed
+	}
+	return c.Writer.WriteBuffer(buffer)
 }
 
 func (c *WebsocketConn) RemoteAddr() net.Addr {
@@ -133,6 +168,7 @@ func (c *WebsocketConn) Upstream() any {
 
 type EarlyWebsocketConn struct {
 	*Client
+	ctx     context.Context
 	rawConn net.Conn
 	conn    atomic.Pointer[WebsocketConn]
 	access  sync.Mutex
@@ -170,14 +206,14 @@ func (c *EarlyWebsocketConn) writeRequest(content []byte) error {
 		if c.earlyDataHeaderName == "" {
 			requestURL := c.requestURL
 			requestURL.Path += earlyDataString
-			conn, err = c.upgrade(c.rawConn, &requestURL, c.headers)
+			conn, err = c.upgrade(c.ctx, c.rawConn, &requestURL, c.headers)
 		} else {
 			headers := c.headers.Clone()
 			headers.Set(c.earlyDataHeaderName, earlyDataString)
-			conn, err = c.upgrade(c.rawConn, &c.requestURL, headers)
+			conn, err = c.upgrade(c.ctx, c.rawConn, &c.requestURL, headers)
 		}
 	} else {
-		conn, err = c.upgrade(c.rawConn, &c.requestURL, c.headers)
+		conn, err = c.upgrade(c.ctx, c.rawConn, &c.requestURL, c.headers)
 	}
 	if err != nil {
 		return err
@@ -224,12 +260,14 @@ func (c *EarlyWebsocketConn) WriteBuffer(buffer *buf.Buffer) error {
 	c.access.Lock()
 	defer c.access.Unlock()
 	if c.err != nil {
+		buffer.Release()
 		return c.err
 	}
 	conn = c.conn.Load()
 	if conn != nil {
 		return wrapWsError(conn.WriteBuffer(buffer))
 	}
+	defer buffer.Release()
 	err := c.writeRequest(buffer.Bytes())
 	c.err = err
 	close(c.create)

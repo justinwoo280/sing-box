@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	B "github.com/sagernet/sing/common/buf"
@@ -27,6 +28,8 @@ type TLSObfs struct {
 	remain        int
 	firstRequest  bool
 	firstResponse bool
+	readAccess    sync.Mutex
+	writeAccess   sync.Mutex
 }
 
 func (to *TLSObfs) read(b []byte, discardN int) (int, error) {
@@ -57,6 +60,8 @@ func (to *TLSObfs) read(b []byte, discardN int) (int, error) {
 }
 
 func (to *TLSObfs) Read(b []byte) (int, error) {
+	to.readAccess.Lock()
+	defer to.readAccess.Unlock()
 	if to.remain > 0 {
 		length := to.remain
 		if length > len(b) {
@@ -81,6 +86,8 @@ func (to *TLSObfs) Read(b []byte) (int, error) {
 }
 
 func (to *TLSObfs) Write(b []byte) (int, error) {
+	to.writeAccess.Lock()
+	defer to.writeAccess.Unlock()
 	length := len(b)
 	for i := 0; i < length; i += chunkSize {
 		end := i + chunkSize
