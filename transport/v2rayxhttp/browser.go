@@ -27,6 +27,7 @@ func newBrowserClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksad
 	opts := cronet.BrowserXHTTPOptions{
 		Mode: options.Mode, Host: options.Host, Path: options.Path,
 		Headers: make(http.Header), NoGRPCHeader: options.NoGRPCHeader, NoSSEHeader: options.NoSSEHeader,
+		GRPCFraming:          options.GRPCFraming,
 		XPaddingBytes:        browserRange(options.XPaddingBytes),
 		ScMaxEachPostBytes:   browserRange(options.ScMaxEachPostBytes),
 		ScMinPostsIntervalMs: browserRange(options.ScMinPostsIntervalMs),

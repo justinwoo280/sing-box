@@ -146,7 +146,7 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 			raw.Close()
 			return nil, err
 		}
-		return bufio.NewBindPacketConn(pc, destination), nil
+		return bufio.NewBindPacketConn(newEWPPacketConn(pc), destination), nil
 	default:
 		return nil, E.Extend(N.ErrUnknownNetwork, network)
 	}
@@ -168,7 +168,7 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 		raw.Close()
 		return nil, err
 	}
-	return pc, nil
+	return newEWPPacketConn(pc), nil
 }
 
 func (h *Outbound) InterfaceUpdated() {

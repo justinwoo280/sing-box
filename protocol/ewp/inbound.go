@@ -14,7 +14,6 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/v2ray"
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/bufio"
 	"github.com/sagernet/sing/common/bufio/deadline"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -179,7 +178,7 @@ func (h *inboundHandler) NewPacketConnection(ctx context.Context, pc net.PacketC
 	metadata.Destination = ewpToSocksaddr(md.Destination)
 	metadata.User = h.owner.userName(md.UserUUID)
 	h.owner.logger.InfoContext(ctx, "[", metadata.User, "] inbound packet connection to ", metadata.Destination)
-	h.owner.router.RoutePacketConnectionEx(ctx, bufio.NewPacketConn(pc), metadata, nil)
+	h.owner.router.RoutePacketConnectionEx(ctx, newEWPPacketConn(pc), metadata, nil)
 	return nil
 }
 

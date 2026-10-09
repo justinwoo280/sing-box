@@ -44,8 +44,21 @@ func (r *browserRealityRouter) RouteConnectionEx(_ context.Context, conn net.Con
 // Exercise the real outbound constructor: browser=true must select native
 // REALITY even when tls.utls is absent, then traverse the existing VLESS inbound.
 func TestBrowserRealityVLESS(t *testing.T) {
-	for _, mode := range []string{"packet-up", "stream-up"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, stream := range []struct {
+		mode   string
+		framed bool
+	}{
+		{mode: "packet-up"},
+		{mode: "stream-up"},
+		{mode: "stream-one"},
+		{mode: "stream-up", framed: true},
+		{mode: "stream-one", framed: true},
+	} {
+		name := stream.mode
+		if stream.framed {
+			name += "/grpc"
+		}
+		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			target := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("proxy request reached camouflage target") }))
@@ -61,7 +74,7 @@ func TestBrowserRealityVLESS(t *testing.T) {
 			dest := M.ParseSocksaddr(target.Listener.Addr().String())
 			const uuid = "11111111-2222-3333-4444-555555555555"
 			transport := option.V2RayTransportOptions{Type: C.V2RayTransportTypeXHTTP, XHTTPOptions: option.V2RayXHTTPOptions{
-				V2RayXHTTPBaseOptions: option.V2RayXHTTPBaseOptions{Mode: mode, Path: "/reality", Host: "front.test"},
+				V2RayXHTTPBaseOptions: option.V2RayXHTTPBaseOptions{Mode: stream.mode, Path: "/reality", Host: "front.test", GRPCFraming: stream.framed},
 			}}
 			router := &browserRealityRouter{metadata: make(chan adapter.InboundContext, 1)}
 			inbound, err := NewInbound(ctx, router, logger.NOP(), "reality-in", option.VLESSInboundOptions{

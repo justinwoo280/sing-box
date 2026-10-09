@@ -1,10 +1,44 @@
 # Cronet Browser XHTTP
 
 Set `"browser": true` on an outbound XHTTP transport and build with `with_cronet`.
-Supported modes are `packet-up` (default) and `stream-up`. Cronet owns TLS,
+Supported modes are `packet-up` (default), `stream-up` and `stream-one`. Cronet owns TLS,
 HTTP/2 and connection reuse. The outbound dialer supplies TCP connections and
 DNS/routing; QUIC is disabled for this integration. `xmux` settings are ignored.
 SekaiMod exposes this as `Browser Dialer` under XHTTP for VLESS and EWP profiles.
+`stream-one` requires TLS and HTTP/2 and permits writes before response headers.
+
+## gRPC streaming intermediaries
+
+To use an intermediary that parses gRPC messages, enable `grpc_framing` on both
+the outbound and the sing-xhttp inbound, using `stream-up` or `stream-one`:
+
+```json
+{
+  "type": "xhttp",
+  "browser": true,
+  "mode": "stream-one",
+  "path": "/xhttp",
+  "grpc_framing": true
+}
+```
+
+The server transport uses the same mode, path and framing option with `browser`
+omitted. Configure TLS on the outbound and HTTP/2 on each gRPC proxy hop. The
+framing option is also available to the ordinary Go XHTTP client and server.
+It defaults to false and must remain disabled when connecting to stock Xray.
+
+`path` names one protobuf service, such as `/example.Tunnel`; requests target
+`/<service>/Tun`, defaulting to `/xhttp/Tun`. Bodies use gRPC's five-byte header
+and protobuf `bytes data = 1`. Messages may contain up to 4 MiB; larger
+application writes are split across messages. Compression, `no_grpc_header` and
+query strings in the service path are unsupported. Both streaming directions
+check `grpc-status`, including trailers-only errors.
+
+In `stream-up`, the upload POST carries `X-Xhttp-Session`, and its response
+heartbeats use the same gRPC framing. The separate download GET needs an ordinary
+HTTP streaming route. `stream-one` carries both directions in one RPC. Proxy
+request timeouts, streaming support and buffering limits still depend on the
+deployment.
 
 ## Desktop binaries
 
@@ -89,12 +123,14 @@ native ECH handshake; QUIC remains disabled.
 Enabling ECH also enables Strict ECH in the client-owned Cronet engine. Chromium
 can retry with an authenticated, usable configuration, but empty or unusable
 retry lists fail instead of falling back to ordinary TLS. Native tests assert
-`ECHAccepted` for successful static, DNS and key-rotation cases in both XHTTP modes,
+`ECHAccepted` for successful static, DNS and key-rotation cases in all three modes,
+including framed `stream-up` and `stream-one`,
 and capture TLS bytes to check that failure paths do not expose the inner hostname.
 
 ## REALITY
 
-Browser supports the existing sing-box XHTTP REALITY server in both modes.
+Browser supports the existing sing-box XHTTP REALITY server in all three modes,
+including both framed streaming modes.
 For example, configure a VLESS outbound as follows, replacing its endpoint,
 UUID, server name, public key and short ID with the server's settings:
 
@@ -163,18 +199,32 @@ handshakes fail. REALITY timestamps currently use the native system clock.
 
 ## Building and testing
 
-`go.mod` pins the published Cronet fork with Browser XHTTP, Host authority
-mapping, Strict ECH and REALITY. Its replacements cover the root, `all` and all
-29 native ABI modules. Normal builds use these published modules with
-`GOWORK=off`. For local development against the sibling `../cronet-go` checkout,
-use the supplied workspace explicitly:
+`go.mod` pins the published Cronet fork with Browser XHTTP, `stream-one`, gRPC
+framing, Host authority mapping, Strict ECH and REALITY, plus the matching
+sing-xhttp implementation. Its replacements cover the root, `all` and all 29
+native ABI modules; the standalone `test` module carries the same pins.
+Normal builds use these published modules with `GOWORK=off`:
+
+```sh
+GOWORK=off go build -tags 'with_cronet with_purego' ./cmd/sing-box
+```
+
+For local development against both sibling checkouts, `../sing-xhttp` and
+`../cronet-go`, use the supplied workspace explicitly:
 
 ```sh
 GOWORK="$PWD/go.work.browser.example" go build -tags 'with_cronet with_purego' ./cmd/sing-box
 ```
 
-For PureGo, distribute the newly built `libcronet.so` alongside the binary or set
-`LD_LIBRARY_PATH`. For CGO, build/package the sibling Cronet library and use its
+For PureGo, obtain the matching native library directory from the pinned module
+and distribute `libcronet.so` alongside the binary or set `LD_LIBRARY_PATH`:
+
+```sh
+GOWORK=off go mod download github.com/sagernet/cronet-go/lib/linux_amd64
+GOWORK=off go list -m -f '{{.Dir}}' github.com/sagernet/cronet-go/lib/linux_amd64
+```
+
+For CGO local development, build/package the sibling Cronet library and use its
 Chromium compiler environment:
 
 ```sh
@@ -193,20 +243,33 @@ tags. They run Browser clients against the real sing-xhttp server over HTTP/2.
 Include `with_utls` to run the existing REALITY server inside the tests:
 
 ```sh
-GOWORK="$PWD/go.work.browser.example" \
-LD_LIBRARY_PATH="$PWD/../cronet-go/lib/linux_amd64" \
+GOWORK=off \
+LD_LIBRARY_PATH="$(GOWORK=off go list -m -f '{{.Dir}}' github.com/sagernet/cronet-go/lib/linux_amd64)" \
 go test -count=1 -race -timeout 45s \
   -tags 'with_cronet with_purego with_cronet_test with_utls' \
-  ./transport/v2rayxhttp ./common/tls ./protocol/vless
+  ./transport/v2rayxhttp ./common/tls ./protocol/vless ./protocol/ewp
 ```
 
-REALITY tests cover both modes, X25519 and X25519MLKEM768, 2 MB echo, authenticated
-HTTP/2 reuse and reconnect, wrong public keys/short IDs, actual Session ID
+REALITY tests cover all three modes and both framed streaming modes, X25519 and
+X25519MLKEM768, 2 MB echo, authenticated HTTP/2 reuse and reconnect, wrong public
+keys/short IDs, actual Session ID
 decryption, and the full VLESS outbound/inbound path without a client uTLS setting.
 Wrong-credential cases cover both an untrusted target (no HTTP request) and a
 trusted target (independent camouflage GET following the server's TLS forwarding).
 Both CGO and PureGo passed on Linux/amd64. Native cryptographic failure tests and
 their commands are documented in cronet-go's `test/native/README.md`.
+
+The transport tests also send uploads larger than 4 MiB through a grpc-go proxy
+that decodes and re-encodes every message, including stream-up heartbeats. Cronet's
+native tests check response trailers, recovery from a read deadline inside a
+frame, download tails after upload EOF, and callback cleanup during concurrent
+connection/client closure. These Go changes use the existing native bidirectional
+API and do not add a native-library capability requirement.
+
+EWP integration tests run actual authenticated inbound/outbound sessions in all
+five mode/framing combinations over ordinary TLS and REALITY, checking TCP and
+UDP traffic across successive sessions. The UDP adapter preserves IPv4, IPv6
+and domain destinations through sing-box's packet interfaces.
 
 Downstream modules, including `test` and SekaiMod's `libcore`, must carry the same
 Cronet replacements: Go does not inherit replacements from dependencies.

@@ -47,9 +47,25 @@ import (
 // Run the actual sing-box REALITY server and XHTTP transport. The ordinary TLS
 // target is local, so authentication and both key exchanges need no public site.
 func TestBrowserRealityInterop(t *testing.T) {
-	for _, mode := range []string{"packet-up", "stream-up"} {
+	for _, stream := range []struct {
+		mode   string
+		framed bool
+	}{
+		{mode: "packet-up"},
+		{mode: "stream-up"},
+		{mode: "stream-one"},
+		{mode: "stream-up", framed: true},
+		{mode: "stream-one", framed: true},
+	} {
+		mode, name := stream.mode, stream.mode
+		if stream.framed {
+			name += "/grpc"
+		}
 		for _, scenario := range []string{"hybrid", "x25519", "wrong-public-key", "wrong-short-id", "camouflage-public-key", "camouflage-short-id"} {
-			t.Run(mode+"/"+scenario, func(t *testing.T) {
+			if stream.framed && scenario != "hybrid" && scenario != "x25519" {
+				continue
+			}
+			t.Run(name+"/"+scenario, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 				defer cancel()
 				camouflage := strings.HasPrefix(scenario, "camouflage-")
@@ -99,7 +115,7 @@ func TestBrowserRealityInterop(t *testing.T) {
 				}
 				observed := &browserRealityServer{ServerConfig: serverTLS, t: t}
 				server, err := NewServer(ctx, logger.NOP(), option.V2RayXHTTPOptions{V2RayXHTTPBaseOptions: option.V2RayXHTTPBaseOptions{
-					Mode: mode, Path: "/reality", Host: "front.test",
+					Mode: mode, Path: "/reality", Host: "front.test", GRPCFraming: stream.framed,
 				}}, observed, browserEchoHandler{})
 				if err != nil {
 					t.Fatal(err)
@@ -167,7 +183,7 @@ func TestBrowserRealityInterop(t *testing.T) {
 					})
 				} else {
 					client, err = NewClient(ctx, N.SystemDialer, M.ParseSocksaddr(listener.Addr().String()), option.V2RayXHTTPOptions{
-						Browser: true, V2RayXHTTPBaseOptions: option.V2RayXHTTPBaseOptions{Mode: mode, Path: "/reality", Host: "front.test"},
+						Browser: true, V2RayXHTTPBaseOptions: option.V2RayXHTTPBaseOptions{Mode: mode, Path: "/reality", Host: "front.test", GRPCFraming: stream.framed},
 					}, clientTLS)
 				}
 				if err != nil {
@@ -186,7 +202,9 @@ func TestBrowserRealityInterop(t *testing.T) {
 					}
 					if camouflage {
 						var nativeError *cronet.ErrorGo
-						if !errors.As(err, &nativeError) || nativeError.InternalErrorCode != cronet.NetErrorRealityAuthenticationFailed.Code() || nativeError.Retryable {
+						validError := errors.Is(err, cronet.NetErrorRealityAuthenticationFailed) ||
+							errors.As(err, &nativeError) && nativeError.InternalErrorCode == cronet.NetErrorRealityAuthenticationFailed.Code() && !nativeError.Retryable
+						if !validError {
 							t.Fatalf("expected REALITY authentication failure: %v", err)
 						}
 						select {

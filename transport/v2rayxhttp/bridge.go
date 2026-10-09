@@ -70,6 +70,7 @@ func buildOptions(o *option.V2RayXHTTPBaseOptions) xhttp.Options {
 		Headers:              headerToOption(o.Headers),
 		NoGRPCHeader:         o.NoGRPCHeader,
 		NoSSEHeader:          o.NoSSEHeader,
+		GRPCFraming:          o.GRPCFraming,
 		XPaddingBytes:        rangePtr(o.XPaddingBytes),
 		ScMaxEachPostBytes:   rangePtr(o.ScMaxEachPostBytes),
 		ScMinPostsIntervalMs: rangePtr(o.ScMinPostsIntervalMs),

@@ -21,10 +21,11 @@ import (
 )
 
 type ewpTestRouter struct {
-	mu   sync.Mutex
-	conn net.Conn
-	md   adapter.InboundContext
-	done chan struct{}
+	mu         sync.Mutex
+	conn       net.Conn
+	packetConn N.PacketConn
+	md         adapter.InboundContext
+	done       chan struct{}
 }
 
 func (r *ewpTestRouter) RouteConnection(context.Context, net.Conn, adapter.InboundContext) error {
@@ -43,7 +44,11 @@ func (r *ewpTestRouter) RouteConnectionEx(_ context.Context, conn net.Conn, md a
 	close(r.done)
 }
 
-func (r *ewpTestRouter) RoutePacketConnectionEx(_ context.Context, _ N.PacketConn, _ adapter.InboundContext, _ N.CloseHandlerFunc) {
+func (r *ewpTestRouter) RoutePacketConnectionEx(_ context.Context, conn N.PacketConn, md adapter.InboundContext, _ N.CloseHandlerFunc) {
+	r.mu.Lock()
+	r.packetConn = conn
+	r.md = md
+	r.mu.Unlock()
 	close(r.done)
 }
 

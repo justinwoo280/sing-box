@@ -141,6 +141,7 @@ type V2RayXHTTPBaseOptions struct {
 	XPaddingBytes        V2RayXHTTPRange        `json:"x_padding_bytes"`
 	NoGRPCHeader         bool                   `json:"no_grpc_header,omitempty"`
 	NoSSEHeader          bool                   `json:"no_sse_header,omitempty"`
+	GRPCFraming          bool                   `json:"grpc_framing,omitempty"`
 	ScMaxEachPostBytes   V2RayXHTTPRange        `json:"sc_max_each_post_bytes"`
 	ScMinPostsIntervalMs V2RayXHTTPRange        `json:"sc_min_posts_interval_ms"`
 	ScMaxBufferedPosts   int64                  `json:"sc_max_buffered_posts,omitempty"`
