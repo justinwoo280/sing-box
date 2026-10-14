@@ -137,6 +137,11 @@ func TestEWPBrowserXHTTP(t *testing.T) {
 				defer outbound.(*Outbound).Close()
 				destination := M.ParseSocksaddr("destination.test:443")
 				for index, network := range []string{N.NetworkTCP, N.NetworkUDP, N.NetworkTCP} {
+					if index == 2 {
+						// Use the same notification interface as the network manager.
+						// Ticket reuse and fresh native pools must both survive it.
+						outbound.(adapter.InterfaceUpdateListener).InterfaceUpdated(ctx)
+					}
 					conn, err := outbound.DialContext(ctx, network, destination)
 					if err != nil {
 						t.Fatalf("flow %d (%s): %v", index, network, err)

@@ -22,6 +22,15 @@ type (
 	ClientConstructor[O any] func(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options O, tlsConfig tls.Config) (adapter.V2RayClientTransport, error)
 )
 
+// ResetClientTransport drops connections after a network update while allowing
+// later dials. Older transports implement this behavior in Close.
+func ResetClientTransport(transport adapter.V2RayClientTransport) error {
+	if resetter, ok := transport.(interface{ Reset() error }); ok {
+		return resetter.Reset()
+	}
+	return transport.Close()
+}
+
 func NewServerTransport(ctx context.Context, logger logger.ContextLogger, options option.V2RayTransportOptions, tlsConfig tls.ServerConfig, handler adapter.V2RayServerTransportHandler) (adapter.V2RayServerTransport, error) {
 	if options.Type == "" {
 		return nil, nil

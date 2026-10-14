@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 
 	"github.com/sagernet/cronet-go"
 	_ "github.com/sagernet/cronet-go/all"
@@ -20,6 +21,9 @@ import (
 )
 
 func newBrowserClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayXHTTPOptions, tlsConfig tls.Config) (adapter.V2RayClientTransport, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if options.Download != nil {
 		return nil, E.New("xhttp: browser does not support separate download settings")
 	}
@@ -72,7 +76,76 @@ func newBrowserClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksad
 			}
 		}
 	}
-	return cronet.NewBrowserXHTTPClient(ctx, u.String(), opts)
+	create := func() (*cronet.BrowserXHTTPClient, error) {
+		return cronet.NewBrowserXHTTPClient(ctx, u.String(), opts)
+	}
+	client, err := create()
+	if err != nil {
+		return nil, err
+	}
+	return &browserClient{ctx: ctx, create: create, client: client}, nil
+}
+
+// A network update discards the old native pool. Close permanently releases the
+// transport; Reset leaves it available for a fresh engine on the next dial.
+type browserClient struct {
+	ctx    context.Context
+	create func() (*cronet.BrowserXHTTPClient, error)
+	mu     sync.Mutex
+	client *cronet.BrowserXHTTPClient
+	closed bool
+}
+
+func (c *browserClient) DialContext(ctx context.Context) (net.Conn, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil, net.ErrClosed
+	}
+	if err := c.ctx.Err(); err != nil {
+		c.mu.Unlock()
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		c.mu.Unlock()
+		return nil, err
+	}
+	if c.client == nil {
+		var err error
+		c.client, err = c.create()
+		if err != nil {
+			c.mu.Unlock()
+			return nil, err
+		}
+	}
+	client := c.client
+	c.mu.Unlock()
+	return client.DialContext(ctx)
+}
+
+func (c *browserClient) Reset() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closeClient()
+}
+
+func (c *browserClient) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closed = true
+	return c.closeClient()
+}
+
+func (c *browserClient) closeClient() error {
+	if c.client == nil {
+		return nil
+	}
+	client := c.client
+	c.client = nil
+	return client.Close()
 }
 
 func browserRange(r option.V2RayXHTTPRange) cronet.BrowserXHTTPRange {

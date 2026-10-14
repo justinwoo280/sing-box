@@ -147,7 +147,7 @@ func (h *Outbound) MultiplexEnabled() bool {
 
 func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	if h.transport != nil {
-		h.transport.Close()
+		_ = v2ray.ResetClientTransport(h.transport)
 	}
 	if h.multiplexDialer != nil {
 		h.multiplexDialer.Reset()

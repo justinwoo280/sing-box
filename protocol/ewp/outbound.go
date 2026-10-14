@@ -27,6 +27,8 @@ func RegisterOutbound(registry *outbound.Registry) {
 	outbound.Register[option.EWPOutboundOptions](registry, C.TypeEWP, NewOutbound)
 }
 
+var _ adapter.InterfaceUpdateListener = (*Outbound)(nil)
+
 type Outbound struct {
 	outbound.Adapter
 	logger     logger.ContextLogger
@@ -171,9 +173,9 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	return newEWPPacketConn(pc), nil
 }
 
-func (h *Outbound) InterfaceUpdated() {
+func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	if h.transport != nil {
-		h.transport.Close()
+		_ = v2ray.ResetClientTransport(h.transport)
 	}
 }
 
