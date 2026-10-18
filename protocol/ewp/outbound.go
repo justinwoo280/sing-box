@@ -7,6 +7,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/mux"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -31,12 +32,13 @@ var _ adapter.InterfaceUpdateListener = (*Outbound)(nil)
 
 type Outbound struct {
 	outbound.Adapter
-	logger     logger.ContextLogger
-	dialer     N.Dialer
-	client     ewpClient
-	serverAddr M.Socksaddr
-	tlsConfig  tls.Config
-	transport  adapter.V2RayClientTransport
+	logger          logger.ContextLogger
+	dialer          N.Dialer
+	client          ewpClient
+	serverAddr      M.Socksaddr
+	tlsConfig       tls.Config
+	transport       adapter.V2RayClientTransport
+	multiplexDialer *mux.Client
 }
 
 func newOutboundTLS(ctx context.Context, logger logger.ContextLogger, options option.EWPOutboundOptions) (tls.Config, error) {
@@ -83,6 +85,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, E.Cause(err, "parse EWP/v2.3 client config")
 	}
 	o.client.SetTicketStore(sewp.NewMemoryV23TicketStore())
+	o.multiplexDialer, err = mux.NewClientWithOptions((*ewpDialer)(o), logger, common.PtrValueOrDefault(options.Multiplex))
+	if err != nil {
+		return nil, err
+	}
 	initialized = true
 	return o, nil
 }
@@ -117,13 +123,33 @@ func (h *Outbound) dialUnderlying(ctx context.Context) (net.Conn, error) {
 }
 
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	if h.multiplexDialer != nil {
+		return h.multiplexDialer.DialContext(ctx, network, destination)
+	}
+	return (*ewpDialer)(h).DialContext(ctx, network, destination)
+}
+
+func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	if h.multiplexDialer != nil {
+		return h.multiplexDialer.ListenPacket(ctx, destination)
+	}
+	return (*ewpDialer)(h).ListenPacket(ctx, destination)
+}
+
+func (h *Outbound) MultiplexEnabled() bool {
+	return h.multiplexDialer != nil
+}
+
+type ewpDialer Outbound
+
+func (h *ewpDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.Tag()
 	metadata.Destination = destination
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
 		h.logger.InfoContext(ctx, "outbound connection to ", destination)
-		raw, err := h.dialUnderlying(ctx)
+		raw, err := (*Outbound)(h).dialUnderlying(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +163,7 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 		return conn, nil
 	case N.NetworkUDP:
 		h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
-		raw, err := h.dialUnderlying(ctx)
+		raw, err := (*Outbound)(h).dialUnderlying(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -154,12 +180,12 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 	}
 }
 
-func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+func (h *ewpDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.Tag()
 	metadata.Destination = destination
 	h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
-	raw, err := h.dialUnderlying(ctx)
+	raw, err := (*Outbound)(h).dialUnderlying(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +203,11 @@ func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	if h.transport != nil {
 		_ = v2ray.ResetClientTransport(h.transport)
 	}
+	if h.multiplexDialer != nil {
+		h.multiplexDialer.Reset()
+	}
 }
 
-func (h *Outbound) Close() error { return common.Close(h.transport) }
+func (h *Outbound) Close() error {
+	return common.Close(common.PtrOrNil(h.multiplexDialer), h.transport)
+}

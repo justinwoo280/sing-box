@@ -19,7 +19,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/insomniacslk/dhcp v0.0.0-20260220084031-5adc3eb26f91
 	github.com/jsimonetti/rtnetlink v1.4.1
-	github.com/justinwoo280/sing-ewp v0.3.1
+	github.com/justinwoo280/sing-ewp v0.3.2-0.20261018133531-a39a9863c246
 	github.com/justinwoo280/sing-xhttp v0.1.7-0.20261008120903-6f71916eb93e
 	github.com/keybase/go-keychain v0.0.1
 	github.com/libdns/acmedns v0.5.0
@@ -47,9 +47,9 @@ require (
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
 	github.com/sagernet/nftables v0.3.0-mod.4
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.7
-	github.com/sagernet/sing v0.9.0-beta.4
+	github.com/sagernet/sing v0.9.5
 	github.com/sagernet/sing-cloudflared v0.1.3-0.20260706062323-d9787e794aa3
-	github.com/sagernet/sing-mux v0.3.5
+	github.com/sagernet/sing-mux v0.3.9
 	github.com/sagernet/sing-openconnect v0.0.0-20260810065514-53aa8058f8df
 	github.com/sagernet/sing-openvpn v0.0.0-20260729104525-103eb5fe5eb6
 	github.com/sagernet/sing-quic v0.7.0-beta.4
