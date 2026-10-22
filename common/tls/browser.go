@@ -4,22 +4,30 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"runtime"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/service"
 )
 
 type BrowserTLSOptions struct {
-	ServerName       string
-	CertificatePEM   string
-	ECHConfigList    []byte
-	GetECHConfigList func(context.Context) ([]byte, error)
-	Reality          *BrowserRealityOptions
+	ServerName                 string
+	CertificatePEM             string
+	UseTrustedRootCertificates bool
+	ECHConfigList              []byte
+	GetECHConfigList           func(context.Context) ([]byte, error)
+	Reality                    *BrowserRealityOptions
 }
 
 type BrowserRealityOptions struct {
 	PublicKey [32]byte
 	ShortID   [8]byte
+}
+
+type browserCertificateStore interface {
+	adapter.CertificateStore
+	BrowserRootCertificates() (string, bool)
+	IsDefaultSystemStore() bool
 }
 
 // BrowserTLSConfig exports the TLS settings that Cronet can express. Keeping
@@ -42,17 +50,29 @@ func (c *STDClientConfig) BrowserTLSConfig() (options BrowserTLSOptions, err err
 	if len(t.Certificates) != 0 || t.GetClientCertificate != nil {
 		return options, errors.New("client certificates are unsupported")
 	}
-	if t.RootCAs != nil && c.certificatePEM == "" {
-		// Android registers a system store unconditionally. Its non-nil Go pool
-		// is not a custom trust policy: Cronet loads system roots natively.
-		// Only permit the original, unmodified default pool here.
-		store, ok := service.FromContext[adapter.CertificateStore](c.ctx).(interface {
-			adapter.CertificateStore
-			IsDefaultSystemStore() bool
-		})
-		if !ok || !store.IsDefaultSystemStore() || t.RootCAs != store.Pool() {
-			return options, errors.New("a custom certificate store requires explicit TLS certificate PEM for Cronet")
-		}
+	options = BrowserTLSOptions{
+		ServerName:    c.serverName,
+		ECHConfigList: bytes.Clone(t.EncryptedClientHelloConfigList),
 	}
-	return BrowserTLSOptions{ServerName: c.serverName, CertificatePEM: c.certificatePEM, ECHConfigList: bytes.Clone(t.EncryptedClientHelloConfigList)}, nil
+	if c.certificatePEM != "" {
+		options.CertificatePEM = c.certificatePEM
+		options.UseTrustedRootCertificates = true
+		return options, nil
+	}
+	if t.RootCAs == nil {
+		return options, nil
+	}
+	store, ok := service.FromContext[adapter.CertificateStore](c.ctx).(browserCertificateStore)
+	if !ok || t.RootCAs != store.Pool() {
+		return options, errors.New("a custom certificate store requires an exportable PEM trust set for Cronet")
+	}
+	if roots, exportable := store.BrowserRootCertificates(); exportable {
+		options.CertificatePEM = roots
+		options.UseTrustedRootCertificates = true
+		return options, nil
+	}
+	if store.IsDefaultSystemStore() && runtime.GOOS != "android" {
+		return options, nil
+	}
+	return options, errors.New("a custom certificate store requires an exportable PEM trust set for Cronet")
 }

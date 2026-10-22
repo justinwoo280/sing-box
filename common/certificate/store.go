@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/pem"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,6 +28,9 @@ type Store struct {
 	storeType                 string
 	systemPool                *x509.CertPool
 	currentPool               *x509.CertPool
+	systemCertificatePEM      string
+	browserRootPEM            string
+	canExportSystemRoots      bool
 	certificate               string
 	certificatePaths          []string
 	certificateDirectoryPaths []string
@@ -41,14 +45,18 @@ func NewStore(ctx context.Context, logger logger.Logger, options option.Certific
 		storeType = C.CertificateStoreSystem
 	}
 	var systemPool *x509.CertPool
+	var systemCertificatePEM bytes.Buffer
+	var canExportSystemRoots bool
 	switch storeType {
 	case C.CertificateStoreSystem:
 		systemPool = x509.NewCertPool()
 		var systemValid bool
 		for _, certificate := range systemCertificates() {
 			systemPool.AddCert(certificate)
+			systemCertificatePEM.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Raw}))
 			systemValid = true
 		}
+		canExportSystemRoots = systemValid
 		if !systemValid {
 			certPool, err := x509.SystemCertPool()
 			if err != nil {
@@ -65,6 +73,8 @@ func NewStore(ctx context.Context, logger logger.Logger, options option.Certific
 		ctx:                       ctx,
 		storeType:                 storeType,
 		systemPool:                systemPool,
+		systemCertificatePEM:      systemCertificatePEM.String(),
+		canExportSystemRoots:      canExportSystemRoots,
 		certificate:               strings.Join(options.Certificate, "\n"),
 		certificatePaths:          options.CertificatePath,
 		certificateDirectoryPaths: options.CertificateDirectoryPath,
@@ -138,6 +148,17 @@ func (s *Store) StoreKind() string {
 	return s.storeType
 }
 
+// BrowserRootCertificates returns the complete PEM trust set when it can be
+// represented by a TLS engine that only accepts explicit roots.
+func (s *Store) BrowserRootCertificates() (string, bool) {
+	s.access.RLock()
+	defer s.access.RUnlock()
+	if s.storeType == C.CertificateStoreSystem && !s.canExportSystemRoots {
+		return "", false
+	}
+	return s.browserRootPEM, true
+}
+
 // IsDefaultSystemStore reports whether a native TLS engine can use its own
 // system trust store without discarding an application certificate policy.
 func (s *Store) IsDefaultSystemStore() bool {
@@ -155,6 +176,9 @@ func (s *Store) update() error {
 		return err
 	}
 	pemBuffer := new(bytes.Buffer)
+	if s.storeType == C.CertificateStoreSystem && s.canExportSystemRoots {
+		appendPEMBlock(pemBuffer, s.systemCertificatePEM)
+	}
 	switch s.storeType {
 	case C.CertificateStoreMozilla:
 		pemContent := mozillaIncludedPEM()
@@ -206,8 +230,12 @@ func (s *Store) update() error {
 	}
 	s.access.Lock()
 	defer s.access.Unlock()
+	if err := s.updatePlatformLocked(pemBuffer.Bytes()); err != nil {
+		return err
+	}
 	s.currentPool = currentPool
-	return s.updatePlatformLocked(pemBuffer.Bytes())
+	s.browserRootPEM = pemBuffer.String()
+	return nil
 }
 
 func appendPEMBlock(buffer *bytes.Buffer, block string) {

@@ -67,6 +67,7 @@ func newBrowserClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksad
 		u.Scheme = "https"
 		u.Host = net.JoinHostPort(serverName, strconv.Itoa(int(serverAddr.Port)))
 		opts.TrustedRootCertificates = browserTLS.CertificatePEM
+		opts.UseTrustedRootCertificates = browserTLS.UseTrustedRootCertificates
 		opts.ECHConfigList = browserTLS.ECHConfigList
 		opts.GetECHConfigList = browserTLS.GetECHConfigList
 		if browserTLS.Reality != nil {

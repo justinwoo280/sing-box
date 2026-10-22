@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common/json/badoption"
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/service"
 )
@@ -38,8 +40,15 @@ func TestBrowserSystemCertificateStore(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if exported.CertificatePEM != "" || exported.ServerName != "browser.test" {
+		if exported.ServerName != "browser.test" {
 			t.Fatalf("unexpected default certificate configuration: %+v", exported)
+		}
+		if runtime.GOOS == "android" {
+			if !exported.UseTrustedRootCertificates || exported.CertificatePEM == "" {
+				t.Fatalf("Android system roots were not exported: %+v", exported)
+			}
+		} else if exported.UseTrustedRootCertificates || exported.CertificatePEM != "" {
+			t.Fatalf("unexpected explicit default roots: %+v", exported)
 		}
 		// Replacing the pool must not silently inherit system-store semantics.
 		client.config.RootCAs = x509.NewCertPool()
@@ -50,14 +59,23 @@ func TestBrowserSystemCertificateStore(t *testing.T) {
 }
 
 func TestBrowserCustomCertificateStore(t *testing.T) {
-	for _, options := range []option.CertificateOptions{
-		{Store: "none"},
-		{Store: "mozilla"},
-		{Store: "chrome"},
-		{Store: "system", CertificateDirectoryPath: []string{t.TempDir()}},
+	_, rootPEM, err := GenerateCertificate(nil, nil, time.Now, "browser.test", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name    string
+		options option.CertificateOptions
+		wantPEM bool
+	}{
+		{name: "none", options: option.CertificateOptions{Store: "none"}},
+		{name: "none-custom", options: option.CertificateOptions{Store: "none", Certificate: badoption.Listable[string]{string(rootPEM)}}, wantPEM: true},
+		{name: "mozilla", options: option.CertificateOptions{Store: "mozilla"}, wantPEM: true},
+		{name: "chrome", options: option.CertificateOptions{Store: "chrome"}, wantPEM: true},
+		{name: "system", options: option.CertificateOptions{Store: "system", CertificateDirectoryPath: []string{t.TempDir()}}},
 	} {
-		t.Run(options.Store, func(t *testing.T) {
-			store, err := certificate.NewStore(context.Background(), logger.NOP(), options)
+		t.Run(test.name, func(t *testing.T) {
+			store, err := certificate.NewStore(context.Background(), logger.NOP(), test.options)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -67,10 +85,45 @@ func TestBrowserCustomCertificateStore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := config.(*STDClientConfig).BrowserTLSConfig(); err == nil || !strings.Contains(err.Error(), "custom certificate store") {
-				t.Fatalf("custom trust policy was ignored: %v", err)
+			exported, err := config.(*STDClientConfig).BrowserTLSConfig()
+			if test.name == "system" && runtime.GOOS != "android" {
+				if err == nil || !strings.Contains(err.Error(), "custom certificate store") {
+					t.Fatalf("custom trust policy was ignored: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !exported.UseTrustedRootCertificates {
+				t.Fatalf("trust policy was not exported: %+v", exported)
+			}
+			wantPEM := test.wantPEM || (test.name == "system" && runtime.GOOS == "android")
+			if (exported.CertificatePEM != "") != wantPEM {
+				t.Fatalf("certificate PEM = %q", exported.CertificatePEM)
 			}
 		})
+	}
+}
+
+func TestBrowserOutboundCertificate(t *testing.T) {
+	_, certificatePEM, err := GenerateCertificate(nil, nil, time.Now, "browser.test", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := NewSTDClient(context.Background(), logger.NOP(), "browser.test", option.OutboundTLSOptions{
+		Enabled:     true,
+		Certificate: badoption.Listable[string]{string(certificatePEM)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := config.(*STDClientConfig).BrowserTLSConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exported.UseTrustedRootCertificates || exported.CertificatePEM != string(certificatePEM) {
+		t.Fatalf("outbound roots = %+v", exported)
 	}
 }
 
