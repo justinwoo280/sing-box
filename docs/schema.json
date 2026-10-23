@@ -3413,6 +3413,18 @@
       "type": "string",
       "pattern": "^[-+]?(((\\d+(\\.\\d*)?|\\.\\d+)(ns|us|µs|μs|ms|s|m|h|d))+|0)$"
     },
+    "EWPUser": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "uuid": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "Endpoint": {
       "oneOf": [
         {
@@ -5971,6 +5983,104 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 65535
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "ewp"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "listen": {
+              "type": "string"
+            },
+            "listen_port": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "bind_interface": {
+              "type": "string"
+            },
+            "routing_mark": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "reuse_addr": {
+              "type": "boolean"
+            },
+            "netns": {
+              "type": "string",
+              "x-tag-reference": "network_namespace"
+            },
+            "disable_tcp_keep_alive": {
+              "type": "boolean"
+            },
+            "tcp_keep_alive": {
+              "$ref": "#/$defs/Duration"
+            },
+            "tcp_keep_alive_interval": {
+              "$ref": "#/$defs/Duration"
+            },
+            "tcp_fast_open": {
+              "type": "boolean"
+            },
+            "tcp_multi_path": {
+              "type": "boolean"
+            },
+            "udp_fragment": {
+              "type": "boolean"
+            },
+            "udp_timeout": {
+              "$ref": "#/$defs/UDPTimeout"
+            },
+            "detour": {
+              "type": "string",
+              "x-tag-reference": "inbound"
+            },
+            "users": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EWPUser"
+              }
+            },
+            "server_id": {
+              "type": "string"
+            },
+            "route_epoch": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "signing_private_key": {
+              "type": "string"
+            },
+            "early_server_finished": {
+              "type": "boolean"
+            },
+            "tls": {
+              "$ref": "#/$defs/InboundTLSOptions"
+            },
+            "multiplex": {
+              "$ref": "#/$defs/InboundMultiplexOptions"
+            },
+            "transport": {
+              "$ref": "#/$defs/V2RayTransport"
             }
           },
           "required": [
@@ -11010,6 +11120,174 @@
             },
             "fallback_delay": {
               "$ref": "#/$defs/Duration"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "ewp"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "detour": {
+              "type": "string",
+              "x-tag-reference": "outbound"
+            },
+            "bind_interface": {
+              "type": "string"
+            },
+            "inet4_bind_address": {
+              "type": "string"
+            },
+            "inet6_bind_address": {
+              "type": "string"
+            },
+            "bind_address_no_port": {
+              "type": "boolean"
+            },
+            "protect_path": {
+              "type": "string"
+            },
+            "routing_mark": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "reuse_addr": {
+              "type": "boolean"
+            },
+            "netns": {
+              "type": "string",
+              "x-tag-reference": "network_namespace"
+            },
+            "connect_timeout": {
+              "$ref": "#/$defs/Duration"
+            },
+            "tcp_fast_open": {
+              "type": "boolean"
+            },
+            "tcp_multi_path": {
+              "type": "boolean"
+            },
+            "disable_tcp_keep_alive": {
+              "type": "boolean"
+            },
+            "tcp_keep_alive": {
+              "$ref": "#/$defs/Duration"
+            },
+            "tcp_keep_alive_interval": {
+              "$ref": "#/$defs/Duration"
+            },
+            "udp_fragment": {
+              "type": "boolean"
+            },
+            "domain_resolver": {
+              "$ref": "#/$defs/DomainResolver"
+            },
+            "network_strategy": {
+              "type": "string",
+              "enum": [
+                "default",
+                "fallback",
+                "hybrid"
+              ]
+            },
+            "network_type": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/InterfaceType"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/InterfaceType"
+                  }
+                }
+              ]
+            },
+            "fallback_network_type": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/InterfaceType"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/InterfaceType"
+                  }
+                }
+              ]
+            },
+            "fallback_delay": {
+              "$ref": "#/$defs/Duration"
+            },
+            "server": {
+              "type": "string"
+            },
+            "server_port": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "uuid": {
+              "type": "string"
+            },
+            "server_public_key": {
+              "type": "string"
+            },
+            "server_id": {
+              "type": "string"
+            },
+            "route_epoch": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "early_server_finished": {
+              "type": "boolean"
+            },
+            "network": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "tcp",
+                    "udp"
+                  ]
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "tcp",
+                      "udp"
+                    ]
+                  }
+                }
+              ]
+            },
+            "tls": {
+              "$ref": "#/$defs/OutboundTLSOptions"
+            },
+            "multiplex": {
+              "$ref": "#/$defs/OutboundMultiplexOptions"
+            },
+            "transport": {
+              "$ref": "#/$defs/V2RayTransport"
             }
           },
           "required": [
@@ -17282,8 +17560,368 @@
             "type"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "xhttp"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "host": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "domain_strategy": {
+              "$ref": "#/$defs/DomainStrategy"
+            },
+            "x_padding_bytes": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "integer"
+                    },
+                    "to": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "no_grpc_header": {
+              "type": "boolean"
+            },
+            "no_sse_header": {
+              "type": "boolean"
+            },
+            "grpc_framing": {
+              "type": "boolean"
+            },
+            "sc_max_each_post_bytes": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "integer"
+                    },
+                    "to": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "sc_min_posts_interval_ms": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "integer"
+                    },
+                    "to": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "sc_max_buffered_posts": {
+              "type": "integer"
+            },
+            "sc_stream_up_server_secs": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "integer"
+                    },
+                    "to": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "xmux": {
+              "$ref": "#/$defs/V2RayXHTTPXmuxOptions"
+            },
+            "browser": {
+              "type": "boolean"
+            },
+            "download": {
+              "$ref": "#/$defs/V2RayXHTTPDownloadOptions"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
         }
       ]
+    },
+    "V2RayXHTTPDownloadOptions": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "domain_strategy": {
+          "$ref": "#/$defs/DomainStrategy"
+        },
+        "x_padding_bytes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "no_grpc_header": {
+          "type": "boolean"
+        },
+        "no_sse_header": {
+          "type": "boolean"
+        },
+        "grpc_framing": {
+          "type": "boolean"
+        },
+        "sc_max_each_post_bytes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "sc_min_posts_interval_ms": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "sc_max_buffered_posts": {
+          "type": "integer"
+        },
+        "sc_stream_up_server_secs": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "xmux": {
+          "$ref": "#/$defs/V2RayXHTTPXmuxOptions"
+        },
+        "server": {
+          "type": "string"
+        },
+        "server_port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "tls": {
+          "$ref": "#/$defs/OutboundTLSOptions"
+        },
+        "detour": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "V2RayXHTTPXmuxOptions": {
+      "type": "object",
+      "properties": {
+        "max_concurrency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "max_connections": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "c_max_reuse_times": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "h_max_request_times": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "h_max_reusable_secs": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "h_keep_alive_period": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
     },
     "VLESSUser": {
       "type": "object",

@@ -10,7 +10,7 @@ require (
 	github.com/docker/docker v27.3.1+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/gofrs/uuid/v5 v5.5.1
-	github.com/justinwoo280/sing-ewp v0.3.2-0.20261018133531-a39a9863c246
+	github.com/justinwoo280/sing-ewp v0.3.2-0.20261023015301-0b89075e7185
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.7
 	github.com/sagernet/sing v0.9.5

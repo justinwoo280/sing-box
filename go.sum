@@ -229,6 +229,8 @@ github.com/justinwoo280/cronet-go/lib/windows_arm64 v0.0.0-20261022062235-d91cbf
 github.com/justinwoo280/cronet-go/lib/windows_arm64 v0.0.0-20261022062235-d91cbf2bd2b5/go.mod h1:n34YyLgapgjWdKa0IoeczjAFCwD3/dxbsH5sucKw0bw=
 github.com/justinwoo280/sing-ewp v0.3.2-0.20261018133531-a39a9863c246 h1:kpLWP6FJYoPRt/ZNFv2M7zZQC73hq7avOlbZmg4FI94=
 github.com/justinwoo280/sing-ewp v0.3.2-0.20261018133531-a39a9863c246/go.mod h1:uE/pQEesc1ZeTVFNF/N3FIIl8WOiMglAVbZHc+kCAx4=
+github.com/justinwoo280/sing-ewp v0.3.2-0.20261023015301-0b89075e7185 h1:v+NMVH27PkvBg0uMPWJHTf/N5Y4uD/wVaQkCS/iDGRQ=
+github.com/justinwoo280/sing-ewp v0.3.2-0.20261023015301-0b89075e7185/go.mod h1:uE/pQEesc1ZeTVFNF/N3FIIl8WOiMglAVbZHc+kCAx4=
 github.com/justinwoo280/sing-xhttp v0.1.7-0.20261008120903-6f71916eb93e h1:48KTewxQWuGVHo0BLKg7o8VdLO5af+6XSIKdnetJCNA=
 github.com/justinwoo280/sing-xhttp v0.1.7-0.20261008120903-6f71916eb93e/go.mod h1:Xa0J6en8cmoWvREZi5ddmJrPvOOF4BSmjDPvwhXGFcA=
 github.com/keybase/go-keychain v0.0.1 h1:way+bWYa6lDppZoZcgMbYsvC7GxljxrskdNInRtuthU=

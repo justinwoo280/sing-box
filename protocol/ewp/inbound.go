@@ -55,7 +55,9 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	if options.ServerID == "" {
 		return nil, E.New("missing server_id")
 	}
-	service, err := sewp.NewServiceV23(&inboundHandler{owner: in}, options.SigningPrivateKey, options.ServerID, options.RouteEpoch)
+	service, err := sewp.NewServiceV23WithOptions(&inboundHandler{owner: in}, options.SigningPrivateKey, options.ServerID, options.RouteEpoch, sewp.V23ServiceOptions{
+		EnableEarlyServerFinished: options.EarlyServerFinished,
+	})
 	if err != nil {
 		return nil, E.Cause(err, "create EWP/v2.3 service")
 	}

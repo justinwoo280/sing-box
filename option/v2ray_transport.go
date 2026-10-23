@@ -242,6 +242,14 @@ type V2RayXHTTPRange struct {
 	To   int32 `json:"to"`
 }
 
+func (r V2RayXHTTPRange) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
+	objectForm := schema.StrictObject()
+	if err := builder.FlattenStruct(objectForm, reflect.TypeFor[V2RayXHTTPRange]()); err != nil {
+		return nil, err
+	}
+	return schema.AnyOf(schema.StringNode(), objectForm), nil
+}
+
 func (r V2RayXHTTPRange) Rand() int32 {
 	if r.To <= r.From {
 		return r.From

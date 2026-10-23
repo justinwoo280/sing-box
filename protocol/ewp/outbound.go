@@ -80,7 +80,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			_ = o.Close()
 		}
 	}()
-	o.client, err = sewp.NewClientV23(options.UUID, options.ServerID, options.ServerPublicKey, options.RouteEpoch)
+	o.client, err = sewp.NewClientV23WithOptions(options.UUID, options.ServerID, options.ServerPublicKey, options.RouteEpoch, sewp.V23ClientOptions{
+		EnableEarlyServerFinished: options.EarlyServerFinished,
+	})
 	if err != nil {
 		return nil, E.Cause(err, "parse EWP/v2.3 client config")
 	}
