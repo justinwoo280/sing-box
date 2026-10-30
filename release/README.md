@@ -1,5 +1,31 @@
 # Native release profiles
 
+## 1.14.x release workflow
+
+The `1.14.x` branch publishes CLI binaries and Linux/OpenWrt packages. Android
+artifacts are CLI `.tar.gz` archives; AARs are not part of this branch's release
+or native-check matrix.
+
+1. Run the **Build** workflow (`.github/workflows/build.yml`) manually, selecting
+   the `1.14.x` branch, a version without the leading `v` (for example
+   `1.14.0-mod.7`), and the `Binary` build type. The repository default branch is
+   currently `1.12.x`, so explicitly select `1.14.x`.
+2. The workflow builds `.tar.gz`/`.zip` archives, DEB/RPM/Pacman/IPK packages and
+   `SHA256SUMS`. A new version is uploaded as a draft prerelease. An existing
+   version uses the existing artifact-replacement flow. New release tags target
+   the exact workflow commit.
+3. Publishing the release triggers **Build Linux Packages** (`linux.yml`) and
+   **Publish Docker Images** (`docker.yml`). The Linux workflow uploads to the
+   configured Fury repository; Docker publishes to `ghcr.io/justinwoo280/sing-box`.
+   The existing version-name rule selects beta package/image aliases for names
+   containing `-`, including `-mod.N`.
+
+**Native release checks** validates the native profiles and uploads CI artifacts
+on source changes. Routine pushes to `1.14.x` run checks; the release build is
+started manually with its intended version.
+
+## Platform profiles
+
 All builds use the immutable sing-tun, sing and sing-lwip versions in `go.mod`.
 The sing-lwip binding pins its platform archives and the native-source lock pins
 the lwIP Git commit and tree hash. Shared libraries are copied from that module
@@ -12,7 +38,6 @@ into lwIP with `"stack": "lwip"`.
 | Linux glibc | 386 SSE2, amd64, ARMv7 NEON, arm64, ppc64le, riscv64, loong64 | PureGo + packaged shared library |
 | Linux musl / OpenWrt | Matrix in `.github/workflows/build.yml` | CGO, fully static executable |
 | Android CLI | 386, amd64, ARMv7, arm64; API 21 | Source-CGO with the target NDK |
-| Android AAR | Standard API 24 / legacy API 21 | Prebuilt-CGO / source-CGO, linked into libbox |
 | Legacy desktop | Windows 7; older ARM, 386 softfloat, MIPS, s390x | Existing Go-only build, without lwIP |
 
 The musl archives have a `-musl` suffix and are the inputs to OpenWrt packages.
@@ -57,7 +82,6 @@ Source preparation requires Git and network access on its first fetch.
 
 Every native-enabled profile includes `licenses/sing-lwip/` with licenses and
 build provenance. Package managers install it under `/usr/share/licenses/sing-box`.
-Android AARs include native notices under `META-INF/licenses/sing-lwip/`.
 The release upload job generates `SHA256SUMS` for the final archives and packages.
 Update the binding and native libraries together. `SING_LWIP_LIBRARY` can override
 the dynamic library path; the loader checks the native ABI when lwIP is started.

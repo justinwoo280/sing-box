@@ -80,7 +80,7 @@ an additional backend; choose exactly one native binding mode:
 |---|---|---|---|
 | Desktop Windows / macOS / Linux glibc | `0` | `with_purego` | Matching DLL / dylib / so beside the executable |
 | Linux musl / IoT | `1` | `with_lwip_prebuilt,with_musl` | Static archive linked into the executable |
-| Android API 23+ | `1` | `with_lwip_prebuilt` | Static archive linked into the CLI or libbox |
+| Android CLI, API 23+ custom build | `1` | `with_lwip_prebuilt` | Static archive linked into the executable |
 | Older CPU ABIs / Android API 21 | `1` | Prepared source-CGO; `with_musl` on musl | Pinned sources compiled for the exact target |
 
 `with_purego` also controls Cronet. Static builds omit it; CGO still needs the
@@ -107,7 +107,7 @@ hard-float. The release workflow uses source-CGO for ARMv5/v6, 386 softfloat and
 MIPS softfloat IoT targets, plus generic ARMv7 without NEON. The ARMv7 NEON musl
 variant also includes Cronet. Desktop legacy variants without a compatible shared
 library retain `go`, `system`, `gvisor` and `mixed` without lwIP. See
-[`release/README.md`](https://github.com/justinwoo280/sing-box/blob/lwip-release/release/README.md)
+[`release/README.md`](https://github.com/justinwoo280/sing-box/blob/1.14.x/release/README.md)
 for the release matrix and verification commands.
 
 ## :material-wrench: Linker Flags

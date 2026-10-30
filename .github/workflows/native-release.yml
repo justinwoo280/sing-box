@@ -216,13 +216,12 @@ jobs:
           GOARCH: ${{ matrix.arch }}
           GOARM: ${{ matrix.goarm }}
           LWIP_MODE: source
-      - name: Link API-23 prebuilt binding and compile libbox
+      - name: Link API-23 prebuilt binding
         run: |
           export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           cc='${{ matrix.ndk }}-clang'
           export CC="${cc/21-clang/23-clang}"
           go test -c -o dist/lwip.test -tags 'with_lwip,with_lwip_prebuilt' github.com/sagernet/sing-tun
-          go build -tags 'with_gvisor,with_quic,with_wireguard,with_utls,with_lwip,with_lwip_prebuilt' ./experimental/libbox
           rm dist/lwip.test
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
@@ -236,43 +235,4 @@ jobs:
         with:
           name: native-android-${{ matrix.arch }}
           path: dist/
-          retention-days: 7
-
-  android-aar:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.10'
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: ./.github/actions/setup-android
-        id: ndk
-      - name: Install pinned mobile tools
-        run: go install github.com/sagernet/gomobile/cmd/gomobile github.com/sagernet/gomobile/cmd/gobind
-      - name: Build standard and legacy AARs
-        run: go run ./cmd/internal/build_libbox -target android -platform android/arm64
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-      - name: Verify AAR contents and dependency files
-        run: |
-          python3 - <<'PY'
-          import zipfile
-          for name in ('libbox.aar', 'libbox-legacy.aar'):
-              with zipfile.ZipFile(name) as archive:
-                  assert archive.testzip() is None
-                  assert 'jni/arm64-v8a/libbox.so' in archive.namelist()
-                  assert 'META-INF/licenses/sing-lwip/LWIP-LICENSE' in archive.namelist()
-          PY
-          git diff --exit-code -- go.mod go.sum
-      - uses: actions/upload-artifact@v4
-        with:
-          name: native-android-aar-arm64
-          path: '*.aar'
           retention-days: 7

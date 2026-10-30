@@ -375,13 +375,13 @@ jobs:
         if: ${{ env.PUBLISHED == 'false' }}
         run: |-
           export PATH="$PATH:$HOME/go/bin"
-          ghr --replace --draft --prerelease -p 5 "v${VERSION}" dist
+          ghr --replace --draft --prerelease -c "$GITHUB_SHA" -p 5 "v${VERSION}" dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Replace builds
         if: ${{ env.PUBLISHED != 'false' }}
         run: |-
           export PATH="$PATH:$HOME/go/bin"
-          ghr --replace -p 5 "v${VERSION}" dist
+          ghr --replace -c "$GITHUB_SHA" -p 5 "v${VERSION}" dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

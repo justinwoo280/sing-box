@@ -83,7 +83,7 @@ go build -tags "tag_a tag_b" ./cmd/sing-box
 |---|---|---|---|
 | Windows／macOS／Linux glibc 桌面 | `0` | `with_purego` | 可执行文件旁的 DLL／dylib／so |
 | Linux musl／IoT | `1` | `with_lwip_prebuilt,with_musl` | 静态链接到可执行文件 |
-| Android API 23+ | `1` | `with_lwip_prebuilt` | 静态链接到 CLI 或 libbox |
+| Android CLI，API 23+ 自定义构建 | `1` | `with_lwip_prebuilt` | 静态链接到可执行文件 |
 | 旧 CPU ABI／Android API 21 | `1` | 准备源码后使用 CGO；musl 加 `with_musl` | 按具体目标编译锁定源码 |
 
 `with_purego` 同时影响 Cronet，静态构建应省略它。预编译静态库仍需要目标 C 工具链。
