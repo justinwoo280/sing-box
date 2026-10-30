@@ -534,7 +534,7 @@ Exclude custom routes when `auto_route` is enabled.
 
     Only supported on Linux with nftables and requires `auto_route` and `auto_redirect` enabled.
 
-    Add the destination IP CIDR rules in the specified rule-sets to the firewall.
+    Apply the destination IP CIDR rules in the specified rule-sets during auto-redirect pre-matching.
     Matched traffic will bypass the sing-box routes.
 
 === "Without `auto_redirect` enabled"

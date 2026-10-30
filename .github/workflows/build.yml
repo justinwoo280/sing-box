@@ -87,7 +87,8 @@ jobs:
           - { os: linux, arch: arm64, libc: musl, lwip: static, cc: "aarch64-linux-musl", cronet: true, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
           - { os: linux, arch: arm, libc: musl, goarm: "5", lwip: source, cc: "arm-linux-musleabi -mcpu=arm926ej_s", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
           - { os: linux, arch: arm, libc: musl, goarm: "6", lwip: source, cc: "arm-linux-musleabi -mcpu=arm1176jzf_s", openwrt: "arm_arm1176jzf-s_vfp" }
-          - { os: linux, arch: arm, libc: musl, goarm: "7", lwip: static, cc: "arm-linux-musleabihf -mcpu=cortex_a7", cronet: true, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
+          - { os: linux, arch: arm, libc: musl, goarm: "7", lwip: source, cc: "arm-linux-musleabihf -mcpu=cortex_a15-neon-d32", openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_vfpv3-d16" }
+          - { os: linux, arch: arm, libc: musl, goarm: "7", variant: neon, lwip: static, cc: "arm-linux-musleabihf -mcpu=cortex_a7", cronet: true, openwrt: "arm_cortex-a7_neon-vfpv4 arm_cortex-a9_neon arm_cortex-a15_neon-vfpv4" }
           - { os: linux, arch: mips, libc: musl, gomips: softfloat, lwip: source, cc: "mips-linux-musleabi -mcpu=mips32", openwrt: "mips_24kc mips_4kec mips_mips32" }
           - { os: linux, arch: mipsle, libc: musl, gomips: hardfloat, lwip: static, cc: "mipsel-linux-musleabihf -mcpu=mips32", openwrt: "mipsel_24kc_24kf" }
           - { os: linux, arch: mipsle, libc: musl, gomips: softfloat, lwip: source, cc: "mipsel-linux-musleabi -mcpu=mips32", openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
@@ -203,6 +204,7 @@ jobs:
           elif [[ -n "${{ matrix.legacy_name }}" ]]; then
             DIR_NAME="${DIR_NAME}-legacy-${{ matrix.legacy_name }}"
           fi
+          if [[ -n '${{ matrix.variant }}' ]]; then DIR_NAME="${DIR_NAME}-${{ matrix.variant }}"; fi
           if [[ '${{ matrix.libc }}' == musl ]]; then DIR_NAME="${DIR_NAME}-musl"; fi
           echo "DIR_NAME=${DIR_NAME}" >> "${GITHUB_ENV}"
           PKG_VERSION="${{ needs.calculate_version.outputs.version }}"
@@ -328,7 +330,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ matrix.os }}_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.go386 && format('_{0}', matrix.go386) }}${{ matrix.gomips && format('_{0}', matrix.gomips) }}${{ matrix.libc && format('-{0}', matrix.libc) }}${{ matrix.legacy_name && format('-legacy-{0}', matrix.legacy_name) }}
+          name: binary-${{ matrix.os }}_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.go386 && format('_{0}', matrix.go386) }}${{ matrix.gomips && format('_{0}', matrix.gomips) }}${{ matrix.variant && format('-{0}', matrix.variant) }}${{ matrix.libc && format('-{0}', matrix.libc) }}${{ matrix.legacy_name && format('-legacy-{0}', matrix.legacy_name) }}
           path: "dist"
   upload:
     name: Upload builds

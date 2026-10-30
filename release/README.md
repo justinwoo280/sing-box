@@ -9,7 +9,7 @@ into lwIP with `"stack": "lwip"`.
 | Profile | Platforms | lwIP binding |
 |---|---|---|
 | Desktop | Windows 386/amd64/arm64; macOS amd64/arm64 | PureGo + packaged shared library |
-| Linux glibc | 386 SSE2, amd64, ARMv7, arm64, ppc64le, riscv64, loong64 | PureGo + packaged shared library |
+| Linux glibc | 386 SSE2, amd64, ARMv7 NEON, arm64, ppc64le, riscv64, loong64 | PureGo + packaged shared library |
 | Linux musl / OpenWrt | Matrix in `.github/workflows/build.yml` | CGO, fully static executable |
 | Android CLI | 386, amd64, ARMv7, arm64; API 21 | Source-CGO with the target NDK |
 | Android AAR | Standard API 24 / legacy API 21 | Prebuilt-CGO / source-CGO, linked into libbox |
@@ -18,7 +18,9 @@ into lwIP with `"stack": "lwip"`.
 The musl archives have a `-musl` suffix and are the inputs to OpenWrt packages.
 They are built separately from glibc desktop binaries. ARMv5/v6, 386 softfloat,
 big-endian MIPS and soft-float MIPS compile native sources for their CPU/ABI;
-they do not reuse the ARMv7/hard-float archives. Cronet is enabled on the modern
+they do not reuse the ARMv7/hard-float archives. Generic ARMv7 musl also uses
+source-CGO with NEON and D32 disabled; the separate `armv7-neon-musl` variant
+includes Cronet and the matching NEON prebuilt lwIP library. Cronet is enabled on the modern
 targets explicitly marked in the matrix; static profiles use its musl archives.
 
 ## Build
@@ -38,7 +40,8 @@ target. `with_purego` is global: a static profile cannot enable that tag.
 `BUILD_TAGS`, `VERSION` and `OUTPUT_DIR` override the base tags, version and output
 directory. Use a fresh output directory for each profile.
 
-`release/zig-cc.sh` adapts Go's MIPS compiler arguments to Zig. Keep all target/CPU
+`release/zig-cc.sh` adapts Go's MIPS compiler arguments and exact static-archive
+names to Zig. Keep all target/CPU
 flags in `CC` so Go's build cache distinguishes ABI variants. CI uses Zig 0.15.2.
 ARMv5 Zig builds also need `gcc-arm-linux-gnueabi` (or `ARMV5_LIBGCC` pointing to
 its `libgcc.a`) for Linux kernel-helper atomics used by Go's CGO runtime.
@@ -54,6 +57,7 @@ Source preparation requires Git and network access on its first fetch.
 
 Every native-enabled profile includes `licenses/sing-lwip/` with licenses and
 build provenance. Package managers install it under `/usr/share/licenses/sing-box`.
+Android AARs include native notices under `META-INF/licenses/sing-lwip/`.
 The release upload job generates `SHA256SUMS` for the final archives and packages.
 Update the binding and native libraries together. `SING_LWIP_LIBRARY` can override
 the dynamic library path; the loader checks the native ABI when lwIP is started.
@@ -61,9 +65,13 @@ the dynamic library path; the loader checks the native ABI when lwIP is started.
 ## Verify
 
 The native release workflow builds desktop and static profiles and exercises the
-binding on supported host runners. Linux smoke tests run the actual packaged CLI
+binding on supported host runners and under QEMU for musl cross-targets.
+`LWIP_TEST_BINARY` asks the release builder to emit the matching in-memory backend
+test executable outside the distribution directory. Linux smoke tests run the actual packaged CLI
 in a fresh network namespace, checking IPv4/IPv6 TCP half-close, UDP fragmentation
-and TCP/UDP DNS interception. For example:
+and TCP/UDP DNS interception. Fragmentation is checked for `go`, `gvisor` and
+`lwip`; the legacy `system`/`mixed` compatibility smoke uses MTU 65535 so its UDP
+datagrams do not require IP reassembly. For example:
 
 ```sh
 sudo python3 release/smoke-tun.py ./dist/sing-box --stack lwip

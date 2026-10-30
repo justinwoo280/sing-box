@@ -18,12 +18,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("binary", type=Path)
     parser.add_argument("--stack", default="lwip", choices=("default", "go", "system", "gvisor", "mixed", "lwip"))
+    parser.add_argument("--mtu", type=int, default=1500)
     parser.add_argument("--parent-namespace")
     args = parser.parse_args()
     namespace = os.readlink("/proc/self/ns/net")
     if args.parent_namespace is None:
         subprocess.run(["unshare", "--net", sys.executable, __file__, str(args.binary.resolve()),
-                        "--stack", args.stack, "--parent-namespace", namespace], check=True)
+                        "--stack", args.stack, "--mtu", str(args.mtu), "--parent-namespace", namespace], check=True)
         return
     if namespace == args.parent_namespace:
         raise RuntimeError("network namespace isolation failed")
@@ -54,7 +55,7 @@ def main():
 
     threading.Thread(target=serve_tcp, daemon=True).start()
     threading.Thread(target=serve_udp, daemon=True).start()
-    inbound = {"type": "tun", "interface_name": "sb-smoke", "mtu": 1500,
+    inbound = {"type": "tun", "interface_name": "sb-smoke", "mtu": args.mtu,
                "address": ["198.18.0.1/24", "fd00::1/64"], "dns_mode": "disabled"}
     if args.stack != "default":
         inbound["stack"] = args.stack
@@ -114,7 +115,7 @@ def main():
                             size = struct.unpack("!H", reader.read(2))[0]
                             reply = reader.read(size)
                             assert reply[:2] == query[:2] and socket.inet_aton("203.0.113.7") in reply, "TCP DNS"
-                print(f"{args.stack}: IPv4/IPv6 TCP, half-close, UDP fragments and DNS passed")
+                print(f"{args.stack} (MTU {args.mtu}): IPv4/IPv6 TCP, half-close, UDP and DNS passed")
             except Exception:
                 logfile.flush()
                 logfile.seek(0)

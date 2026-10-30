@@ -120,10 +120,14 @@ func getAndroidBindTarget() string {
 }
 
 func buildAndroidVariant(config AndroidBuildConfig, bindTarget string) {
+	outputPath, err := filepath.Abs(config.OutputName)
+	if err != nil {
+		log.Fatal(err)
+	}
 	args := []string{
 		"bind",
 		"-v",
-		"-o", config.OutputName,
+		"-o", outputPath,
 		"-target", bindTarget,
 		"-androidapi", strconv.Itoa(config.AndroidAPI),
 		"-javapkg=io.nekohasekai",
@@ -140,6 +144,7 @@ func buildAndroidVariant(config AndroidBuildConfig, bindTarget string) {
 	args = append(args, "./experimental/libbox")
 
 	command := exec.Command(build_shared.GoBinPath+"/gomobile", args...)
+	var sourceLock string
 	if config.SourceLWIP {
 		// API-21 builds compile the locked sources with their own NDK target;
 		// published static archives target API 23 and cannot set this baseline.
@@ -148,15 +153,21 @@ func buildAndroidVariant(config AndroidBuildConfig, bindTarget string) {
 			log.Fatal(err)
 		}
 		defer os.RemoveAll(directory)
-		modfile, err := build_shared.PrepareLWIPSource(directory)
+		workspace, err := build_shared.PrepareLWIPWorkspace(directory)
 		if err != nil {
 			log.Fatal(err)
 		}
-		command.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS="+os.Getenv("GOFLAGS")+" -mod=readonly "+strconv.Quote("-modfile="+modfile))
+		command.Dir = workspace
+		command.Env = append(os.Environ(), "GOWORK=off")
+		sourceLock = filepath.Join(directory, "source", "third_party", "lwip.lock.json")
 	}
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
-	err := command.Run()
+	err = command.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = build_shared.AddLWIPAARNotices(outputPath, sourceLock, config.AndroidAPI)
 	if err != nil {
 		log.Fatal(err)
 	}

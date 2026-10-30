@@ -94,7 +94,7 @@ targets. For example, from the repository root:
 
 ```sh
 GOOS=linux GOARCH=amd64 LWIP_MODE=dynamic WITH_CRONET=true bash release/build-native.sh
-GOOS=linux GOARCH=amd64 CC='zig cc -target x86_64-linux-musl' \
+GOOS=linux GOARCH=amd64 CC="bash $PWD/release/zig-cc.sh -target x86_64-linux-musl" \
   LWIP_MODE=static LWIP_LIBC=musl WITH_CRONET=true bash release/build-native.sh
 ```
 
@@ -102,9 +102,10 @@ GOOS=linux GOARCH=amd64 CC='zig cc -target x86_64-linux-musl' \
 directory and builds with an alternate modfile. It preserves the checked-in
 dependency files. No native-source download occurs implicitly in `go build`.
 
-Published ARM32 libraries require ARMv7 and hard-float; MIPS prebuilts require
+Published Linux ARM32 libraries require ARMv7, NEON and hard-float; MIPS prebuilts require
 hard-float. The release workflow uses source-CGO for ARMv5/v6, 386 softfloat and
-MIPS softfloat IoT targets. Desktop legacy variants without a compatible shared
+MIPS softfloat IoT targets, plus generic ARMv7 without NEON. The ARMv7 NEON musl
+variant also includes Cronet. Desktop legacy variants without a compatible shared
 library retain `go`, `system`, `gvisor` and `mixed` without lwIP. See
 [`release/README.md`](https://github.com/justinwoo280/sing-box/blob/lwip-release/release/README.md)
 for the release matrix and verification commands.

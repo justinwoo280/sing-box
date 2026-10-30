@@ -494,7 +494,7 @@ sing-box DNS 模块，等价于一条
     
         仅支持 Linux，且需要 nftables，`auto_route` 和 `auto_redirect` 已启用。 
     
-    将指定规则集中的目标 IP CIDR 规则添加到防火墙。
+    在自动重定向预匹配阶段应用指定规则集中的目标 IP CIDR 规则。
     不匹配的流量将绕过 sing-box 路由。
 
 === "`auto_redirect` 未启用"
@@ -517,7 +517,7 @@ sing-box DNS 模块，等价于一条
     
         仅支持 Linux，且需要 nftables，`auto_route` 和 `auto_redirect` 已启用。 
 
-    将指定规则集中的目标 IP CIDR 规则添加到防火墙。
+    在自动重定向预匹配阶段应用指定规则集中的目标 IP CIDR 规则。
     匹配的流量将绕过 sing-box 路由。
 
     与 `route.default_mark` 和 `[dialOptions].routing_mark` 冲突。

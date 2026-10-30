@@ -92,9 +92,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y iproute2
           for stack in default go system gvisor mixed lwip; do
-            sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack "$stack"
+            # Legacy system/mixed UDP paths do not reassemble every IP fragment.
+            # Test their stream/datagram compatibility without fragmentation.
+            mtu=1500
+            if [[ "$stack" == system || "$stack" == mixed ]]; then mtu=65535; fi
+            sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack "$stack" --mtu "$mtu"
           done
           sudo env SING_LWIP_LIBRARY=/nonexistent/unused.so python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack default
+          sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack default --mtu 65535
+          sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack lwip --mtu 65535
       - uses: actions/upload-artifact@v4
         with:
           name: native-desktop-${{ matrix.os }}-${{ matrix.arch }}
@@ -140,6 +146,35 @@ jobs:
           LWIP_MODE: ${{ matrix.lwip }}
           LWIP_LIBC: musl
           WITH_CRONET: ${{ matrix.cronet || 'false' }}
+          LWIP_TEST_BINARY: ${{ runner.temp }}/lwip.test
+      - name: Test target lwIP backend
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user
+          case "$ARCH" in
+            amd64) runner=() ;;
+            386) runner=(qemu-i386) ;;
+            arm64) runner=(qemu-aarch64) ;;
+            arm)
+              case "$ARM" in
+                5) runner=(qemu-arm -cpu arm926) ;;
+                6) runner=(qemu-arm -cpu arm1176) ;;
+                *)
+                  if [[ "$VARIANT" == neon ]]; then runner=(qemu-arm); else runner=(qemu-arm -cpu cortex-a15,neon=off,vfp-d32=off); fi ;;
+              esac ;;
+            mipsle) runner=(qemu-mipsel) ;;
+            mips) runner=(qemu-mips) ;;
+            mips64le) runner=(qemu-mips64el) ;;
+            mips64) runner=(qemu-mips64) ;;
+            riscv64) runner=(qemu-riscv64) ;;
+            loong64) runner=(qemu-loongarch64) ;;
+            *) exit 1 ;;
+          esac
+          "${runner[@]}" "$RUNNER_TEMP/lwip.test" -test.run '^TestLWIP' -test.v -test.timeout 2m
+        env:
+          ARCH: ${{ matrix.arch }}
+          ARM: ${{ matrix.goarm }}
+          VARIANT: ${{ matrix.variant }}
       - name: Test static executable
         if: matrix.arch == 'amd64'
         run: |
@@ -151,7 +186,7 @@ jobs:
         run: git diff --exit-code -- go.mod go.sum
       - uses: actions/upload-artifact@v4
         with:
-          name: native-musl-${{ matrix.arch }}-${{ matrix.goarm }}${{ matrix.go386 }}${{ matrix.gomips }}
+          name: native-musl-${{ matrix.arch }}-${{ matrix.goarm }}${{ matrix.go386 }}${{ matrix.gomips }}${{ matrix.variant }}
           path: dist/
           retention-days: 7
 
@@ -200,4 +235,43 @@ jobs:
         with:
           name: native-android-${{ matrix.arch }}
           path: dist/
+          retention-days: 7
+
+  android-aar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+          local-cache: true
+      - name: Install pinned mobile tools
+        run: go install github.com/sagernet/gomobile/cmd/gomobile github.com/sagernet/gomobile/cmd/gobind
+      - name: Build standard and legacy AARs
+        run: go run ./cmd/internal/build_libbox -target android -platform android/arm64
+      - name: Verify AAR contents and dependency files
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          for name in ('libbox.aar', 'libbox-legacy.aar'):
+              with zipfile.ZipFile(name) as archive:
+                  assert archive.testzip() is None
+                  assert 'jni/arm64-v8a/libbox.so' in archive.namelist()
+                  assert 'META-INF/licenses/sing-lwip/LWIP-LICENSE' in archive.namelist()
+          PY
+          git diff --exit-code -- go.mod go.sum
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-android-aar-arm64
+          path: '*.aar'
           retention-days: 7

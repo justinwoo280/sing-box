@@ -106,6 +106,9 @@ if [[ "${WITH_CRONET:-false}" == true ]]; then
 fi
 
 go build "${modflags[@]}" -trimpath -tags "$tags" -ldflags "$ldflags" -o "$out/sing-box" ./cmd/sing-box
+if [[ -n "${LWIP_TEST_BINARY:-}" ]]; then
+  go test "${modflags[@]}" -c -tags "$tags" -ldflags "$ldflags" -o "$LWIP_TEST_BINARY" github.com/sagernet/sing-tun
+fi
 if [[ "$mode" != disabled ]]; then
   {
     echo "binding=$mode"

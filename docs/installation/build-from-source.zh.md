@@ -94,15 +94,16 @@ Linux 完全静态程序使用 musl 和外部 `-static` 链接；Android 仍依�
 
 ```sh
 GOOS=linux GOARCH=amd64 LWIP_MODE=dynamic WITH_CRONET=true bash release/build-native.sh
-GOOS=linux GOARCH=amd64 CC='zig cc -target x86_64-linux-musl' \
+GOOS=linux GOARCH=amd64 CC="bash $PWD/release/zig-cc.sh -target x86_64-linux-musl" \
   LWIP_MODE=static LWIP_LIBC=musl WITH_CRONET=true bash release/build-native.sh
 ```
 
 `LWIP_MODE=source` 会在临时目录下载并校验模块锁定的原生源码，使用临时 modfile 构建，
 不改动仓库中的依赖文件。普通 `go build` 不会自动下载 C 源码。
 
-现有 ARM32 预编译库要求 ARMv7 hard-float，MIPS 预编译库要求 hard-float。
-发版工作流为 ARMv5/v6、386 softfloat 和 MIPS softfloat 的 IoT 目标使用源码 CGO。
+现有 Linux ARM32 预编译库要求 ARMv7、NEON 和 hard-float，MIPS 预编译库要求 hard-float。
+发版工作流为 ARMv5/v6、无 NEON 的通用 ARMv7、386 softfloat 和 MIPS softfloat 的 IoT 目标使用源码 CGO。
+ARMv7 NEON 的 musl 变体同时包含 Cronet。
 没有匹配动态库的旧桌面变体仍提供 `go`、`system`、`gvisor` 和 `mixed`，不包含 lwIP。
 
 ## :material-wrench: 链接器标志
