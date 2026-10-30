@@ -138,6 +138,7 @@ jobs:
           echo "PATH=$HOME/go/go_win7/bin:$PATH" >> $GITHUB_ENV
           echo "GOROOT=$HOME/go/go_win7" >> $GITHUB_ENV
       - name: Setup Android NDK
+        id: ndk
         if: matrix.os == 'android'
         uses: nttld/setup-ndk@v1
         with:
@@ -186,6 +187,7 @@ jobs:
           export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           bash release/build-native.sh
         env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           GOARM: ${{ matrix.goarm }}

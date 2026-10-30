@@ -203,6 +203,7 @@ jobs:
         with:
           go-version: '1.26.10'
       - uses: nttld/setup-ndk@v1
+        id: ndk
         with:
           ndk-version: r28
           local-cache: true
@@ -212,6 +213,7 @@ jobs:
           export CC='${{ matrix.ndk }}-clang'
           bash release/build-native.sh
         env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           GOOS: android
           GOARCH: ${{ matrix.arch }}
           GOARM: ${{ matrix.goarm }}
@@ -225,6 +227,7 @@ jobs:
           go build -tags 'with_gvisor,with_quic,with_wireguard,with_utls,with_lwip,with_lwip_prebuilt' ./experimental/libbox
           rm dist/lwip.test
         env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           CGO_ENABLED: '1'
           GOOS: android
           GOARCH: ${{ matrix.arch }}
@@ -252,6 +255,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: nttld/setup-ndk@v1
+        id: ndk
         with:
           ndk-version: r28
           local-cache: true
@@ -259,6 +263,8 @@ jobs:
         run: go install github.com/sagernet/gomobile/cmd/gomobile github.com/sagernet/gomobile/cmd/gobind
       - name: Build standard and legacy AARs
         run: go run ./cmd/internal/build_libbox -target android -platform android/arm64
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
       - name: Verify AAR contents and dependency files
         run: |
           python3 - <<'PY'

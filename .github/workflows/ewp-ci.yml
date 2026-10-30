@@ -65,6 +65,13 @@ jobs:
             -tags 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale' \
             ./protocol/ewp/... ./option/... ./common/tls/...
 
+      - name: Test VPN UDP data planes
+        working-directory: test
+        run: |
+          CGO_ENABLED=0 go test -count=1 -timeout=2m \
+            -tags 'with_gvisor,with_quic,with_wireguard,with_utls,with_openvpn,with_openconnect' \
+            -run '^Test(OpenVPN|OpenConnect)EndpointUDPNATDataPlane$' .
+
       - name: Race test transports
         run: |
           go test -race -count=1 -timeout=2m \
