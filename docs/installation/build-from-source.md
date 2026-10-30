@@ -6,6 +6,10 @@ icon: material/file-code
 
 ## :material-graph: Requirements
 
+### This fork
+
+Go 1.25.5 or newer. Release CI uses Go 1.26.10.
+
 ### sing-box 1.11
 
 * Go 1.23.1 - ~
@@ -66,6 +70,44 @@ go build -tags "tag_a tag_b" ./cmd/sing-box
 | `tfogo_checklinkname0`             | :material-check:     | Companion to `badlinkname`. Go 1.23+ enforces `go:linkname` restrictions via the linker; this tag signals the build uses `-checklinkname=0` to bypass that enforcement.                                                                                                                                                       |
 
 It is not recommended to change the default build tag list unless you really know what you are adding.
+
+## lwIP
+
+The `go` TUN stack is the default. Add `with_lwip` to offer `"stack": "lwip"` as
+an additional backend; choose exactly one native binding mode:
+
+| Target | CGO | Additional tags | Native runtime |
+|---|---|---|---|
+| Desktop Windows / macOS / Linux glibc | `0` | `with_purego` | Matching DLL / dylib / so beside the executable |
+| Linux musl / IoT | `1` | `with_lwip_prebuilt,with_musl` | Static archive linked into the executable |
+| Android API 23+ | `1` | `with_lwip_prebuilt` | Static archive linked into the CLI or libbox |
+| Older CPU ABIs / Android API 21 | `1` | Prepared source-CGO; `with_musl` on musl | Pinned sources compiled for the exact target |
+
+`with_purego` also controls Cronet. Static builds omit it; CGO still needs the
+target compiler even when using prebuilt archives. Fully static Linux executables
+use a musl compiler and external `-static` linking, as implemented in
+`release/build-native.sh`. Android retains its system libc dependency.
+
+The build script stages the pinned runtime library, native build metadata and
+licenses in `dist`. Set `WITH_CRONET=true` to include Browser XHTTP on supported
+targets. For example, from the repository root:
+
+```sh
+GOOS=linux GOARCH=amd64 LWIP_MODE=dynamic WITH_CRONET=true bash release/build-native.sh
+GOOS=linux GOARCH=amd64 CC='zig cc -target x86_64-linux-musl' \
+  LWIP_MODE=static LWIP_LIBC=musl WITH_CRONET=true bash release/build-native.sh
+```
+
+`LWIP_MODE=source` prepares the module's locked native sources in a temporary
+directory and builds with an alternate modfile. It preserves the checked-in
+dependency files. No native-source download occurs implicitly in `go build`.
+
+Published ARM32 libraries require ARMv7 and hard-float; MIPS prebuilts require
+hard-float. The release workflow uses source-CGO for ARMv5/v6, 386 softfloat and
+MIPS softfloat IoT targets. Desktop legacy variants without a compatible shared
+library retain `go`, `system`, `gvisor` and `mixed` without lwIP. See
+[`release/README.md`](https://github.com/justinwoo280/sing-box/blob/lwip-release/release/README.md)
+for the release matrix and verification commands.
 
 ## :material-wrench: Linker Flags
 

@@ -13,6 +13,13 @@ https://sing-box.sagernet.org
 Desktop Browser XHTTP support and the required Cronet native libraries are
 documented in [transport/v2rayxhttp/README.browser.md](transport/v2rayxhttp/README.browser.md).
 
+## TUN stacks and native releases
+
+This fork defaults to sing-tun's Go userspace stack and retains `system`, `gvisor`,
+`mixed` and optional `lwip` backends. Desktop releases package the matching lwIP
+shared library; Android and Linux musl/IoT builds link it statically. See
+[release profiles and verification](release/README.md).
+
 ## License
 
 ```

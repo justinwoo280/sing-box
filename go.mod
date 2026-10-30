@@ -47,7 +47,7 @@ require (
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
 	github.com/sagernet/nftables v0.3.0-mod.4
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.7
-	github.com/sagernet/sing v0.9.5
+	github.com/sagernet/sing v0.9.7-0.20261023115510-03a6cce64bf7
 	github.com/sagernet/sing-cloudflared v0.1.3-0.20260706062323-d9787e794aa3
 	github.com/sagernet/sing-mux v0.3.9
 	github.com/sagernet/sing-openconnect v0.0.0-20260810065514-53aa8058f8df
@@ -81,6 +81,7 @@ require (
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11
+	gopkg.in/yaml.v3 v3.0.1
 	howett.net/plist v1.0.1
 )
 
@@ -126,6 +127,41 @@ require (
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
+	github.com/justinwoo280/sing-lwip v0.0.0-20261030093243-b93bf82cd01c // indirect
+	github.com/justinwoo280/sing-lwip/lib/android_386 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/android_amd64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/android_arm v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/android_arm64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/darwin_amd64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/darwin_arm64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/freebsd_amd64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/freebsd_arm64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/ios_amd64_simulator v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/ios_arm64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/ios_arm64_simulator v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_386_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_386_musl v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_amd64_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_amd64_musl v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_arm64_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_arm64_musl v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_arm_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_arm_musl v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_loong64_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_loong64_musl v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_mips64le_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_mipsle_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_mipsle_musl v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_ppc64le_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_ppc64le_musl v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_riscv64_gnu v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_riscv64_musl v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/tvos_amd64_simulator v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/tvos_arm64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/tvos_arm64_simulator v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/windows_386 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/windows_amd64 v0.0.0-20261030093240-91edc2e471fd // indirect
+	github.com/justinwoo280/sing-lwip/lib/windows_arm64 v0.0.0-20261030093240-91edc2e471fd // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/koron/go-ssdp v0.0.4 // indirect
@@ -196,7 +232,6 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
@@ -238,3 +273,5 @@ replace (
 	github.com/sagernet/cronet-go/lib/windows_amd64 => github.com/justinwoo280/cronet-go/lib/windows_amd64 v0.0.0-20261022062235-d91cbf2bd2b5
 	github.com/sagernet/cronet-go/lib/windows_arm64 => github.com/justinwoo280/cronet-go/lib/windows_arm64 v0.0.0-20261022062235-d91cbf2bd2b5
 )
+
+replace github.com/sagernet/sing-tun => github.com/justinwoo280/sing-tun v0.9.7-0.20261030092842-6fef878601c0

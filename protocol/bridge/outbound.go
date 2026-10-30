@@ -27,6 +27,7 @@ var (
 	_ adapter.FlowOutbound                = (*Outbound)(nil)
 	_ adapter.OutboundWithPreferredRoutes = (*Outbound)(nil)
 	_ adapter.Lifecycle                   = (*Outbound)(nil)
+	_ tun.PortWithUpstream                = (*Outbound)(nil)
 )
 
 type Backend interface {
@@ -110,11 +111,8 @@ func (o *Outbound) PortMTU() uint32 {
 	return o.backend.PortMTU()
 }
 
-func (o *Outbound) PortSelectorRange() (uint16, uint16) {
-	if rangedBackend, isRanged := o.backend.(tun.PortWithSelectorRange); isRanged {
-		return rangedBackend.PortSelectorRange()
-	}
-	return 0, 0
+func (o *Outbound) UpstreamPort() any {
+	return o.backend
 }
 
 func (o *Outbound) AttachReturn(returnPath tun.Return) error {

@@ -119,7 +119,7 @@ icon: material/new-box
 
   ... // UDP NAT 字段
 
-  "stack": "system",
+  "stack": "go",
   "include_interface": [
     "lan0"
   ],
@@ -548,11 +548,20 @@ TCP/IP 栈。
 
 | 栈       | 描述                                                                                                  | 
 |----------|-------------------------------------------------------------------------------------------------------|
+| `go`     | Go 用户态 TCP/IP 栈（默认） |
 | `system` | 基于系统网络栈执行 L3 到 L4 转换                                                                        |
 | `gvisor` | 基于 [gVisor](https://github.com/google/gvisor) 虚拟网络栈执行 L3 到 L4 转换                            |
 | `mixed`  | 混合 `system` TCP 栈与 `gvisor` UDP 栈                                                                 |
+| `lwip`   | 通过 sing-lwip 接入 HEV lwIP 用户态栈，需要 `with_lwip` 及对应绑定模式 |
 
-默认使用 `mixed` 栈如果 gVisor 构建标记已启用，否则默认使用 `system` 栈。
+此分支默认使用 `go`，省略 `stack` 时也是如此。`gvisor` 和 `mixed` 仍可通过
+`with_gvisor` 构建标签启用。
+
+新的 `lwip` 后端独立于 1.8.0 移除的旧实现。桌面发行包附带匹配的动态库，
+仅在启动 `lwip` 栈时加载；Android 和 Linux musl／IoT 发行包静态链接 lwIP。
+详见[原生库构建与打包](../../installation/build-from-source.zh.md#lwip)。
+动态构建默认从可执行文件所在目录加载库，也可以用 `SING_LWIP_LIBRARY` 指定路径。
+缺少动态库或 ABI 不匹配时会返回启动错误。
 
 #### include_interface
 

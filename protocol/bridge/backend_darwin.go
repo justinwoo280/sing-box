@@ -252,7 +252,7 @@ func (b *backendDarwin) batchReadLoop() {
 	var buffers [][]byte
 	var batch [][]byte
 	for {
-		packets, err := b.batchTUN.BatchRead()
+		packets, err := b.batchTUN.BatchRead(0, 0)
 		if err != nil {
 			select {
 			case <-b.closed:

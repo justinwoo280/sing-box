@@ -75,6 +75,7 @@ type AndroidBuildConfig struct {
 	AndroidAPI int
 	OutputName string
 	Tags       []string
+	SourceLWIP bool
 }
 
 func filterTags(tags []string, exclude ...string) []string {
@@ -139,6 +140,20 @@ func buildAndroidVariant(config AndroidBuildConfig, bindTarget string) {
 	args = append(args, "./experimental/libbox")
 
 	command := exec.Command(build_shared.GoBinPath+"/gomobile", args...)
+	if config.SourceLWIP {
+		// API-21 builds compile the locked sources with their own NDK target;
+		// published static archives target API 23 and cannot set this baseline.
+		directory, err := os.MkdirTemp("", "sing-box-lwip-")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer os.RemoveAll(directory)
+		modfile, err := build_shared.PrepareLWIPSource(directory)
+		if err != nil {
+			log.Fatal(err)
+		}
+		command.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS="+os.Getenv("GOFLAGS")+" -mod=readonly "+strconv.Quote("-modfile="+modfile))
+	}
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	err := command.Run()
@@ -165,6 +180,7 @@ func buildAndroid() {
 
 	// Build main variant (SDK 24)
 	mainTags := append([]string{}, sharedTags...)
+	mainTags = append(mainTags, "with_lwip", "with_lwip_prebuilt")
 	// mainTags = append(mainTags, memcTags...)
 	if debugEnabled {
 		mainTags = append(mainTags, debugTags...)
@@ -177,6 +193,7 @@ func buildAndroid() {
 
 	// Build legacy variant (SDK 21, no naive outbound)
 	legacyTags := filterTags(sharedTags, "with_naive_outbound")
+	legacyTags = append(legacyTags, "with_lwip")
 	// legacyTags = append(legacyTags, memcTags...)
 	if debugEnabled {
 		legacyTags = append(legacyTags, debugTags...)
@@ -185,6 +202,7 @@ func buildAndroid() {
 		AndroidAPI: 21,
 		OutputName: "libbox-legacy.aar",
 		Tags:       legacyTags,
+		SourceLWIP: true,
 	}, bindTarget)
 }
 

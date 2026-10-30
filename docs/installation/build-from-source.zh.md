@@ -6,6 +6,10 @@ icon: material/file-code
 
 ## :material-graph: 要求
 
+### 此分支
+
+Go 1.25.5 或更高版本。发版 CI 使用 Go 1.26.10。
+
 ### sing-box 1.11
 
 * Go 1.23.1 - ~
@@ -70,6 +74,36 @@ go build -tags "tag_a tag_b" ./cmd/sing-box
 | `tfogo_checklinkname0`             | :material-check:  | `badlinkname` 的伴随标记。Go 1.23+ 链接器强制限制 `go:linkname` 使用；此标记表示构建使用 `-checklinkname=0` 以绕过该限制。                                                                                                                                                                                                                                |
 
 除非您确实知道您正在启用什么，否则不建议更改默认构建标签列表。
+
+## lwIP
+
+默认 TUN 栈为 `go`。添加 `with_lwip` 可提供 `"stack": "lwip"`，并选择一种原生绑定模式：
+
+| 目标 | CGO | 附加标签 | 原生库 |
+|---|---|---|---|
+| Windows／macOS／Linux glibc 桌面 | `0` | `with_purego` | 可执行文件旁的 DLL／dylib／so |
+| Linux musl／IoT | `1` | `with_lwip_prebuilt,with_musl` | 静态链接到可执行文件 |
+| Android API 23+ | `1` | `with_lwip_prebuilt` | 静态链接到 CLI 或 libbox |
+| 旧 CPU ABI／Android API 21 | `1` | 准备源码后使用 CGO；musl 加 `with_musl` | 按具体目标编译锁定源码 |
+
+`with_purego` 同时影响 Cronet，静态构建应省略它。预编译静态库仍需要目标 C 工具链。
+Linux 完全静态程序使用 musl 和外部 `-static` 链接；Android 仍依赖系统 libc。
+
+`release/build-native.sh` 将匹配的动态库、构建元数据和许可证一起放入 `dist`。
+支持 Cronet 的目标可设置 `WITH_CRONET=true`。例如，在仓库根目录执行：
+
+```sh
+GOOS=linux GOARCH=amd64 LWIP_MODE=dynamic WITH_CRONET=true bash release/build-native.sh
+GOOS=linux GOARCH=amd64 CC='zig cc -target x86_64-linux-musl' \
+  LWIP_MODE=static LWIP_LIBC=musl WITH_CRONET=true bash release/build-native.sh
+```
+
+`LWIP_MODE=source` 会在临时目录下载并校验模块锁定的原生源码，使用临时 modfile 构建，
+不改动仓库中的依赖文件。普通 `go build` 不会自动下载 C 源码。
+
+现有 ARM32 预编译库要求 ARMv7 hard-float，MIPS 预编译库要求 hard-float。
+发版工作流为 ARMv5/v6、386 softfloat 和 MIPS softfloat 的 IoT 目标使用源码 CGO。
+没有匹配动态库的旧桌面变体仍提供 `go`、`system`、`gvisor` 和 `mixed`，不包含 lwIP。
 
 ## :material-wrench: 链接器标志
 
