@@ -118,7 +118,7 @@ icon: material/new-box
 
   ... // UDP NAT Fields
 
-  "stack": "system",
+  "stack": "go",
   "include_interface": [
     "lan0"
   ],
@@ -508,7 +508,7 @@ Exclude custom routes when `auto_route` is enabled.
     
         Only supported on Linux with nftables and requires `auto_route` and `auto_redirect` enabled.
     
-    Add the destination IP CIDR rules in the specified rule-sets to the firewall.
+    Apply the destination IP CIDR rules in the specified rule-sets during auto-redirect pre-matching.
     Unmatched traffic will bypass the sing-box routes.
     
     Conflict with `route.default_mark` and `[dialOptions].routing_mark`.
@@ -534,7 +534,7 @@ Exclude custom routes when `auto_route` is enabled.
 
     Only supported on Linux with nftables and requires `auto_route` and `auto_redirect` enabled.
 
-    Add the destination IP CIDR rules in the specified rule-sets to the firewall.
+    Apply the destination IP CIDR rules in the specified rule-sets during auto-redirect pre-matching.
     Matched traffic will bypass the sing-box routes.
 
 === "Without `auto_redirect` enabled"
@@ -568,11 +568,21 @@ TCP/IP stack.
 
 | Stack    | Description                                                                                           | 
 |----------|-------------------------------------------------------------------------------------------------------|
+| `go`     | Go userspace TCP/IP stack (default) |
 | `system` | Perform L3 to L4 translation using the system network stack                                           |
 | `gvisor` | Perform L3 to L4 translation using [gVisor](https://github.com/google/gvisor)'s virtual network stack |
 | `mixed`  | Mixed `system` TCP stack and `gvisor` UDP stack                                                       |
+| `lwip`   | HEV lwIP userspace stack through sing-lwip; requires `with_lwip` and a native binding mode |
 
-Defaults to the `mixed` stack if the gVisor build tag is enabled, otherwise defaults to the `system` stack.
+This fork defaults to `go`, including when `stack` is omitted. `gvisor` and `mixed`
+remain available with the `with_gvisor` build tag.
+
+The new `lwip` backend is independent of the legacy implementation removed in 1.8.0.
+Desktop packages include a matching shared library, loaded only when starting the
+`lwip` stack. Android and Linux musl/IoT packages link lwIP statically. See
+[native build and packaging](../../installation/build-from-source.md#lwip).
+For dynamic builds, `SING_LWIP_LIBRARY` overrides the default library path beside
+the executable. Missing libraries and ABI mismatches are reported as startup errors.
 
 #### include_interface
 

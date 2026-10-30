@@ -49,7 +49,7 @@ type TunInboundOptions struct {
 	UDPMapping                    UDPNATBehavior                   `json:"udp_mapping,omitempty"`
 	UDPFiltering                  UDPNATBehavior                   `json:"udp_filtering,omitempty"`
 	UDPNATMax                     uint32                           `json:"udp_nat_max,omitempty"`
-	Stack                         string                           `json:"stack,omitempty" enum:"system,gvisor,mixed"`
+	Stack                         string                           `json:"stack,omitempty" enum:"go,system,gvisor,mixed,lwip"`
 	Platform                      *TunPlatformOptions              `json:"platform,omitempty"`
 	InboundOptions
 

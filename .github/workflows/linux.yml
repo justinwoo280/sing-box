@@ -52,17 +52,17 @@ jobs:
     strategy:
       matrix:
         include:
-          - { os: linux, arch: amd64, cronet: true, debian: amd64, rpm: x86_64, pacman: x86_64 }
-          - { os: linux, arch: "386", cronet: true, debian: i386, rpm: i386 }
-          - { os: linux, arch: arm, cronet: true, goarm: "6", debian: armel, rpm: armv6hl }
-          - { os: linux, arch: arm, cronet: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl }
-          - { os: linux, arch: arm64, cronet: true, debian: arm64, rpm: aarch64, pacman: aarch64 }
+          - { os: linux, arch: amd64, lwip: dynamic, cronet: true, debian: amd64, rpm: x86_64, pacman: x86_64 }
+          - { os: linux, arch: "386", lwip: dynamic, cronet: true, debian: i386, rpm: i386 }
+          - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl }
+          - { os: linux, arch: arm, lwip: dynamic, cronet: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl }
+          - { os: linux, arch: arm64, lwip: dynamic, cronet: true, debian: arm64, rpm: aarch64, pacman: aarch64 }
           - { os: linux, arch: mips64le, debian: mips64el, rpm: mips64el }
           - { os: linux, arch: mipsle, debian: mipsel, rpm: mipsel }
           - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
-          - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
-          - { os: linux, arch: riscv64, cronet: true, debian: riscv64, rpm: riscv64 }
-          - { os: linux, arch: loong64, cronet: true, debian: loongarch64, rpm: loongarch64 }
+          - { os: linux, arch: ppc64le, lwip: dynamic, debian: ppc64el, rpm: ppc64le }
+          - { os: linux, arch: riscv64, lwip: dynamic, cronet: true, debian: riscv64, rpm: riscv64 }
+          - { os: linux, arch: loong64, lwip: dynamic, cronet: true, debian: loongarch64, rpm: loongarch64 }
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -82,34 +82,16 @@ jobs:
         run: |-
           git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$GITHUB_ENV"
           git tag v${{ needs.calculate_version.outputs.version }} -f
-      - name: Set build tags
-        run: |
-          set -xeuo pipefail
-          TAGS='with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale'
-          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
-            TAGS="${TAGS},with_cronet,with_purego"
-          fi
-          echo "BUILD_TAGS=${TAGS}" >> "${GITHUB_ENV}"
       - name: Build
-        run: |
-          set -xeuo pipefail
-          mkdir -p dist
-          go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
-          -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }}' \
-          ./cmd/sing-box
+        run: bash release/build-native.sh
         env:
-          CGO_ENABLED: "0"
+          LWIP_MODE: ${{ matrix.lwip || 'disabled' }}
+          WITH_CRONET: ${{ matrix.cronet || 'false' }}
+          VERSION: ${{ needs.calculate_version.outputs.version }}
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           GOARM: ${{ matrix.goarm }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Stage Cronet library
-        if: matrix.cronet
-        run: |
-          set -xeuo pipefail
-          MODULE="github.com/sagernet/cronet-go/lib/${{ matrix.os }}_${{ matrix.arch }}"
-          MODULE_DIR="$(go list -m -f '{{.Dir}}' "${MODULE}")"
-          cp "${MODULE_DIR}/libcronet.so" dist/libcronet.so
       - name: Set mtime
         run: |-
           TZ=UTC touch -t '197001010000' dist/sing-box
@@ -138,9 +120,7 @@ jobs:
           retry sudo apt-get install -y debsigs
           cp .fpm_systemd .fpm
           PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
-          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
-            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
-          fi
+          source release/package-native.sh
           fpm -t deb \
             --name "${NAME}" \
             -v "$PKG_VERSION" \
@@ -173,9 +153,7 @@ jobs:
           retry sudo gem install fpm
           cp .fpm_systemd .fpm
           PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
-          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
-            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
-          fi
+          source release/package-native.sh
           fpm -t rpm \
             --name "${NAME}" \
             -v "$PKG_VERSION" \
@@ -191,7 +169,7 @@ jobs:
           EOF
           rpmsign --addsign dist/*.rpm
       - name: Cleanup
-        run: rm -f dist/sing-box dist/libcronet.so
+        run: rm -rf dist/sing-box dist/libcronet.so dist/libsing-lwip.so dist/licenses
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

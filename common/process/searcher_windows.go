@@ -36,7 +36,7 @@ func (s *windowsSearcher) Close() error {
 }
 
 func (s *windowsSearcher) FindProcessInfo(ctx context.Context, network string, source netip.AddrPort, destination netip.AddrPort) (*adapter.ConnectionOwner, error) {
-	pid, err := winiphlpapi.FindPid(network, source)
+	pid, err := winiphlpapi.FindPid(network, source, destination)
 	if err != nil {
 		return nil, err
 	}

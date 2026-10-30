@@ -1,0 +1,238 @@
+name: Native release checks
+
+on:
+  push:
+    paths:
+      - 'go.*'
+      - 'option/**'
+      - 'protocol/**'
+      - 'transport/**'
+      - 'route/**'
+      - 'release/**'
+      - 'cmd/internal/**'
+      - '.github/workflows/native-release.yml'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/linux.yml'
+      - '.github/actions/setup-android/**'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-release-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+  GOWORK: 'off'
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      iot: ${{ steps.matrix.outputs.iot }}
+      android: ${{ steps.matrix.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+      - id: matrix
+        run: |
+          echo "iot=$(go run ./cmd/internal/release_matrix -group iot)" >> "$GITHUB_OUTPUT"
+          echo "android=$(go run ./cmd/internal/release_matrix -group android)" >> "$GITHUB_OUTPUT"
+      - name: Regression tests
+        run: go test -race -count=1 ./protocol/tun ./protocol/bridge ./route
+      - name: Build all enabled transports
+        run: CGO_ENABLED=0 go build -tags "$(cat release/DEFAULT_BUILD_TAGS_OTHERS),with_cronet,with_lwip,with_purego" ./...
+      - name: Validate release scripts
+        run: bash -n release/build-native.sh release/package-native.sh release/zig-cc.sh
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, os: linux, arch: amd64, cronet: true, library: libsing-lwip.so}
+          - {runner: ubuntu-24.04-arm, os: linux, arch: arm64, cronet: true, library: libsing-lwip.so}
+          - {runner: macos-15-intel, os: darwin, arch: amd64, library: libsing-lwip.dylib}
+          - {runner: macos-15, os: darwin, arch: arm64, library: libsing-lwip.dylib}
+          - {runner: windows-2022, os: windows, arch: amd64, cronet: true, library: sing-lwip.dll}
+          - {runner: windows-2022, os: windows, arch: '386', library: sing-lwip.dll}
+          - {runner: windows-11-arm, os: windows, arch: arm64, cronet: true, library: sing-lwip.dll}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+      - name: Build and stage pinned native runtime
+        run: bash release/build-native.sh
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          WITH_CRONET: ${{ matrix.cronet || 'false' }}
+          LWIP_MODE: dynamic
+      - name: Test packaged lwIP library
+        run: |
+          library="$PWD/dist/${{ matrix.library }}"
+          if [[ '${{ runner.os }}' == Windows ]]; then library=$(cygpath -w "$library"); fi
+          SING_LWIP_LIBRARY="$library" CGO_ENABLED=0 go test -count=1 -tags 'with_gvisor,with_lwip,with_purego' -run '^TestLWIP' github.com/sagernet/sing-tun
+          ./dist/sing-box version
+        env:
+          GOARCH: ${{ matrix.arch }}
+      - name: Test packaged executable and all TUN selections
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iproute2
+          for stack in default go system gvisor mixed lwip; do
+            # Legacy system/mixed UDP paths do not reassemble every IP fragment.
+            # Test their stream/datagram compatibility without fragmentation.
+            mtu=1500
+            if [[ "$stack" == system || "$stack" == mixed ]]; then mtu=65535; fi
+            sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack "$stack" --mtu "$mtu"
+          done
+          sudo env SING_LWIP_LIBRARY=/nonexistent/unused.so python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack default
+          sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack default --mtu 65535
+          sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack lwip --mtu 65535
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-desktop-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/
+          retention-days: 7
+
+  iot:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.iot) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: '0.15.2'
+      - name: Install ARMv5 compiler runtime
+        if: matrix.goarm == '5'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabi
+      - name: Build static release profile
+        run: |
+          export CC="bash $PWD/release/zig-cc.sh -target $TARGET_CC"
+          bash release/build-native.sh
+          if readelf -l dist/sing-box | grep -q INTERP || readelf -d dist/sing-box | grep -q NEEDED; then
+            echo 'Unexpected dynamic dependency in musl release' >&2
+            exit 1
+          fi
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          GOARM: ${{ matrix.goarm }}
+          GO386: ${{ matrix.go386 }}
+          GOMIPS: ${{ matrix.gomips }}
+          GOMIPS64: ${{ matrix.gomips }}
+          TARGET_CC: ${{ matrix.cc }}
+          LWIP_MODE: ${{ matrix.lwip }}
+          LWIP_LIBC: musl
+          WITH_CRONET: ${{ matrix.cronet || 'false' }}
+          LWIP_TEST_BINARY: ${{ runner.temp }}/lwip.test
+      - name: Test target lwIP backend
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user
+          case "$ARCH" in
+            amd64) runner=() ;;
+            386) runner=(qemu-i386) ;;
+            arm64) runner=(qemu-aarch64) ;;
+            arm)
+              case "$ARM" in
+                5) runner=(qemu-arm -cpu arm926) ;;
+                6) runner=(qemu-arm -cpu arm1176) ;;
+                *)
+                  if [[ "$VARIANT" == neon ]]; then runner=(qemu-arm); else runner=(qemu-arm -cpu cortex-a15,neon=off,vfp-d32=off); fi ;;
+              esac ;;
+            mipsle) runner=(qemu-mipsel) ;;
+            mips) runner=(qemu-mips) ;;
+            mips64le) runner=(qemu-mips64el) ;;
+            mips64) runner=(qemu-mips64) ;;
+            riscv64) runner=(qemu-riscv64) ;;
+            loong64) runner=(qemu-loongarch64) ;;
+            *) exit 1 ;;
+          esac
+          "${runner[@]}" "$RUNNER_TEMP/lwip.test" -test.run '^TestLWIP' -test.v -test.timeout 2m
+        env:
+          ARCH: ${{ matrix.arch }}
+          ARM: ${{ matrix.goarm }}
+          VARIANT: ${{ matrix.variant }}
+      - name: Test static executable
+        if: matrix.arch == 'amd64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iproute2
+          sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack lwip
+          sudo python3 release/smoke-tun.py "$PWD/dist/sing-box" --stack default
+      - name: Check dependency files remain immutable
+        run: git diff --exit-code -- go.mod go.sum
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-musl-${{ matrix.arch }}-${{ matrix.goarm }}${{ matrix.go386 }}${{ matrix.gomips }}${{ matrix.variant }}
+          path: dist/
+          retention-days: 7
+
+  android:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.android) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+      - uses: ./.github/actions/setup-android
+        id: ndk
+      - name: Build API-21 static lwIP CLI
+        run: |
+          export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          export CC='${{ matrix.ndk }}-clang'
+          bash release/build-native.sh
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          GOOS: android
+          GOARCH: ${{ matrix.arch }}
+          GOARM: ${{ matrix.goarm }}
+          LWIP_MODE: source
+      - name: Link API-23 prebuilt binding
+        run: |
+          export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cc='${{ matrix.ndk }}-clang'
+          export CC="${cc/21-clang/23-clang}"
+          go test -c -o dist/lwip.test -tags 'with_lwip,with_lwip_prebuilt' github.com/sagernet/sing-tun
+          rm dist/lwip.test
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          CGO_ENABLED: '1'
+          GOOS: android
+          GOARCH: ${{ matrix.arch }}
+          GOARM: ${{ matrix.goarm }}
+      - name: Check dependency files remain immutable
+        run: git diff --exit-code -- go.mod go.sum
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-android-${{ matrix.arch }}
+          path: dist/
+          retention-days: 7

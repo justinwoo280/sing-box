@@ -8037,9 +8037,11 @@
             "stack": {
               "type": "string",
               "enum": [
+                "go",
                 "system",
                 "gvisor",
-                "mixed"
+                "mixed",
+                "lwip"
               ]
             },
             "platform": {

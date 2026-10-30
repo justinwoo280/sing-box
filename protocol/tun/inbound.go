@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -59,6 +61,10 @@ type Inbound struct {
 	routeExcludeRuleSetCallback []*list.Element[adapter.RuleSetUpdateCallback]
 	routeAddressSet             []*netipx.IPSet
 	routeExcludeAddressSet      []*netipx.IPSet
+	routeSets                   atomic.Pointer[routeAddressSets]
+	routeSetAccess              sync.Mutex
+	routeSetClosed              bool
+	routeSetReferences          []adapter.RuleSet
 }
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TunInboundOptions) (adapter.Inbound, error) {
@@ -119,7 +125,8 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	}
 	var enableGSO bool
 	if C.IsLinux && platformInterface == nil {
-		enableGSO = (options.Stack == "gvisor" && tunMTU < 49152)
+		enableGSO = options.Stack == "" || options.Stack == "go" || options.Stack == "lwip" ||
+			(options.Stack == "gvisor" && tunMTU < 49152)
 	}
 	var udpTimeout time.Duration
 	if options.UDPTimeout != 0 {
@@ -261,16 +268,16 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		}
 		disableNFTables, dErr := strconv.ParseBool(os.Getenv("DISABLE_NFTABLES"))
 		inbound.autoRedirect, err = tun.NewAutoRedirect(tun.AutoRedirectOptions{
-			TunOptions:             &inbound.tunOptions,
-			Context:                ctx,
-			Handler:                (*autoRedirectHandler)(inbound),
-			Logger:                 logger,
-			NetworkMonitor:         networkManager.NetworkMonitor(),
-			InterfaceFinder:        networkManager.InterfaceFinder(),
-			TableName:              "sing-box",
-			DisableNFTables:        dErr == nil && disableNFTables,
-			RouteAddressSet:        &inbound.routeAddressSet,
-			RouteExcludeAddressSet: &inbound.routeExcludeAddressSet,
+			TunOptions:        &inbound.tunOptions,
+			Context:           ctx,
+			Handler:           (*autoRedirectHandler)(inbound),
+			Logger:            logger,
+			NetworkMonitor:    networkManager.NetworkMonitor(),
+			InterfaceFinder:   networkManager.InterfaceFinder(),
+			TableName:         "sing-box",
+			DisableNFTables:   dErr == nil && disableNFTables,
+			RouteAddressSet:   inbound.routeAddressSetPrefixes,
+			AndroidVPNService: C.IsAndroid && platformInterface != nil && platformInterface.UsePlatformInterface(),
 		})
 		if err != nil {
 			return nil, E.Cause(err, "initialize auto-redirect")
@@ -374,13 +381,14 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 				t.tunOptions.NetNs = manager.ResolvePath(t.tunOptions.NetNs)
 			}
 		}
-		if t.platformInterface == nil || C.IsWindows {
+		if t.platformInterface == nil || C.IsWindows || t.autoRedirect != nil {
 			for _, routeRuleSet := range t.routeRuleSet {
 				ipSets := routeRuleSet.ExtractIPSet()
 				if len(ipSets) == 0 {
 					t.logger.Warn("route_address_set: no destination IP CIDR rules found in rule-set: ", routeRuleSet.Name())
 				}
 				routeRuleSet.IncRef()
+				t.routeSetReferences = append(t.routeSetReferences, routeRuleSet)
 				t.routeAddressSet = append(t.routeAddressSet, ipSets...)
 				if t.autoRedirect != nil {
 					t.routeRuleSetCallback = append(t.routeRuleSetCallback, routeRuleSet.RegisterCallback(t.updateRouteAddressSet))
@@ -392,12 +400,16 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 					t.logger.Warn("route_address_set: no destination IP CIDR rules found in rule-set: ", routeExcludeRuleSet.Name())
 				}
 				routeExcludeRuleSet.IncRef()
+				t.routeSetReferences = append(t.routeSetReferences, routeExcludeRuleSet)
 				t.routeExcludeAddressSet = append(t.routeExcludeAddressSet, ipSets...)
 				if t.autoRedirect != nil {
 					t.routeExcludeRuleSetCallback = append(t.routeExcludeRuleSetCallback, routeExcludeRuleSet.RegisterCallback(t.updateRouteAddressSet))
 				}
 			}
 		}
+		t.routeSetAccess.Lock()
+		t.refreshRouteAddressSets()
+		t.routeSetAccess.Unlock()
 		var (
 			tunInterface tun.Tun
 			err          error
@@ -498,11 +510,15 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 }
 
 func (t *Inbound) updateRouteAddressSet(it adapter.RuleSet) {
-	t.routeAddressSet = common.FlatMap(t.routeRuleSet, adapter.RuleSet.ExtractIPSet)
-	t.routeExcludeAddressSet = common.FlatMap(t.routeExcludeRuleSet, adapter.RuleSet.ExtractIPSet)
-	t.autoRedirect.UpdateRouteAddressSet()
-	t.routeAddressSet = nil
-	t.routeExcludeAddressSet = nil
+	t.routeSetAccess.Lock()
+	defer t.routeSetAccess.Unlock()
+	if t.routeSetClosed {
+		return
+	}
+	t.refreshRouteAddressSets()
+	if err := t.autoRedirect.UpdateRouteAddressSet(); err != nil {
+		t.logger.Error("update route address set: ", err)
+	}
 }
 
 func (t *Inbound) InterfaceUpdated(ctx context.Context) {
@@ -513,6 +529,21 @@ func (t *Inbound) InterfaceUpdated(ctx context.Context) {
 }
 
 func (t *Inbound) Close() error {
+	for index, callback := range t.routeRuleSetCallback {
+		t.routeRuleSet[index].UnregisterCallback(callback)
+	}
+	t.routeRuleSetCallback = nil
+	for index, callback := range t.routeExcludeRuleSetCallback {
+		t.routeExcludeRuleSet[index].UnregisterCallback(callback)
+	}
+	t.routeExcludeRuleSetCallback = nil
+	t.routeSetAccess.Lock()
+	defer t.routeSetAccess.Unlock()
+	t.routeSetClosed = true
+	for _, ruleSet := range t.routeSetReferences {
+		ruleSet.DecRef()
+	}
+	t.routeSetReferences = nil
 	return common.Close(
 		t.tunStack,
 		t.tunIf,
@@ -586,6 +617,9 @@ func (t *Inbound) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, 
 type autoRedirectHandler Inbound
 
 func (t *autoRedirectHandler) JudgeFlow(network uint8, source netip.AddrPort, destination netip.AddrPort, firstPacket []byte) tun.FlowVerdict {
+	if sets := t.routeSets.Load(); sets != nil && sets.bypass(destination.Addr()) {
+		return tun.FlowVerdict{Action: tun.ActionBypass}
+	}
 	return (*Inbound)(t).JudgeFlow(network, source, destination, firstPacket)
 }
 

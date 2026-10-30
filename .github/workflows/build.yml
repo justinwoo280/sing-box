@@ -58,39 +58,58 @@ jobs:
     needs:
       - calculate_version
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - { os: linux, arch: amd64, cronet: true, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
-          - { os: linux, arch: "386", cronet: true, go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4" }
-          - { os: linux, arch: "386", cronet: true, go386: softfloat, openwrt: "i386_pentium-mmx" }
-          - { os: linux, arch: arm64, cronet: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
-          - { os: linux, arch: arm, cronet: true, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
-          - { os: linux, arch: arm, cronet: true, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
-          - { os: linux, arch: arm, cronet: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
-          - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
-          - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc_24kf" }
-          - { os: linux, arch: mipsle, gomips: softfloat, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
-          - { os: linux, arch: mips64, gomips: softfloat, openwrt: "mips64_mips64r2 mips64_octeonplus" }
+          - { os: linux, arch: amd64, lwip: dynamic, cronet: true, debian: amd64, rpm: x86_64, pacman: x86_64 }
+          - { os: linux, arch: "386", lwip: dynamic, cronet: true, go386: sse2, debian: i386, rpm: i386 }
+          - { os: linux, arch: "386", go386: softfloat }
+          - { os: linux, arch: arm64, lwip: dynamic, cronet: true, debian: arm64, rpm: aarch64, pacman: aarch64 }
+          - { os: linux, arch: arm, goarm: "5" }
+          - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl }
+          - { os: linux, arch: arm, lwip: dynamic, cronet: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl }
+          - { os: linux, arch: mips, gomips: softfloat }
+          - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel }
+          - { os: linux, arch: mipsle, gomips: softfloat }
+          - { os: linux, arch: mips64, gomips: softfloat }
           - { os: linux, arch: mips64le, gomips: hardfloat, debian: mips64el, rpm: mips64el }
-          - { os: linux, arch: mips64le, gomips: softfloat, openwrt: "mips64el_mips64r2" }
+          - { os: linux, arch: mips64le, gomips: softfloat }
           - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
-          - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
-          - { os: linux, arch: riscv64, cronet: true, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
-          - { os: linux, arch: loong64, cronet: true, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
+          - { os: linux, arch: ppc64le, lwip: dynamic, debian: ppc64el, rpm: ppc64le }
+          - { os: linux, arch: riscv64, lwip: dynamic, cronet: true, debian: riscv64, rpm: riscv64 }
+          - { os: linux, arch: loong64, lwip: dynamic, cronet: true, debian: loongarch64, rpm: loongarch64 }
 
-          - { os: windows, arch: amd64, cronet: true }
+          # IoT packages are independently linked for musl. Source mode keeps
+          # legacy CPU/float ABIs independent of the ARMv7/hard-float prebuilts.
+          - { os: linux, arch: amd64, libc: musl, lwip: static, cc: "x86_64-linux-musl", cronet: true, openwrt: "x86_64" }
+          - { os: linux, arch: "386", libc: musl, go386: sse2, lwip: static, cc: "x86-linux-musl", cronet: true, openwrt: "i386_pentium4" }
+          - { os: linux, arch: "386", libc: musl, go386: softfloat, lwip: source, cc: "x86-linux-musl -mcpu=pentium_mmx", openwrt: "i386_pentium-mmx" }
+          - { os: linux, arch: arm64, libc: musl, lwip: static, cc: "aarch64-linux-musl", cronet: true, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
+          - { os: linux, arch: arm, libc: musl, goarm: "5", lwip: source, cc: "arm-linux-musleabi -mcpu=arm926ej_s", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
+          - { os: linux, arch: arm, libc: musl, goarm: "6", lwip: source, cc: "arm-linux-musleabi -mcpu=arm1176jzf_s", openwrt: "arm_arm1176jzf-s_vfp" }
+          - { os: linux, arch: arm, libc: musl, goarm: "7", lwip: source, cc: "arm-linux-musleabihf -mcpu=cortex_a15-neon-d32", openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_vfpv3-d16" }
+          - { os: linux, arch: arm, libc: musl, goarm: "7", variant: neon, lwip: static, cc: "arm-linux-musleabihf -mcpu=cortex_a7", cronet: true, openwrt: "arm_cortex-a7_neon-vfpv4 arm_cortex-a9_neon arm_cortex-a15_neon-vfpv4" }
+          - { os: linux, arch: mips, libc: musl, gomips: softfloat, lwip: source, cc: "mips-linux-musleabi -mcpu=mips32", openwrt: "mips_24kc mips_4kec mips_mips32" }
+          - { os: linux, arch: mipsle, libc: musl, gomips: hardfloat, lwip: static, cc: "mipsel-linux-musleabihf -mcpu=mips32", openwrt: "mipsel_24kc_24kf" }
+          - { os: linux, arch: mipsle, libc: musl, gomips: softfloat, lwip: source, cc: "mipsel-linux-musleabi -mcpu=mips32", openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
+          - { os: linux, arch: mips64, libc: musl, gomips: softfloat, lwip: source, cc: "mips64-linux-muslabi64 -mcpu=mips64r2", openwrt: "mips64_mips64r2 mips64_octeonplus" }
+          - { os: linux, arch: mips64le, libc: musl, gomips: softfloat, lwip: source, cc: "mips64el-linux-muslabi64 -mcpu=mips64r2", openwrt: "mips64el_mips64r2" }
+          - { os: linux, arch: riscv64, libc: musl, lwip: static, cc: "riscv64-linux-musl", cronet: true, openwrt: "riscv64_generic" }
+          - { os: linux, arch: loong64, libc: musl, lwip: static, cc: "loongarch64-linux-musl", cronet: true, openwrt: "loongarch64_generic" }
+
+          - { os: windows, arch: amd64, lwip: dynamic, cronet: true }
           - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
-          - { os: windows, arch: "386" }
+          - { os: windows, arch: "386", lwip: dynamic }
           - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
-          - { os: windows, arch: arm64, cronet: true }
+          - { os: windows, arch: arm64, lwip: dynamic, cronet: true }
 
-          - { os: darwin, arch: amd64 }
-          - { os: darwin, arch: arm64 }
+          - { os: darwin, arch: amd64, lwip: dynamic }
+          - { os: darwin, arch: arm64, lwip: dynamic }
 
-          - { os: android, arch: arm64, ndk: "aarch64-linux-android21" }
-          - { os: android, arch: arm, ndk: "armv7a-linux-androideabi21" }
-          - { os: android, arch: amd64, ndk: "x86_64-linux-android21" }
-          - { os: android, arch: "386", ndk: "i686-linux-android21" }
+          - { os: android, arch: arm64, lwip: source, ndk: "aarch64-linux-android21" }
+          - { os: android, arch: arm, goarm: "7", lwip: source, ndk: "armv7a-linux-androideabi21" }
+          - { os: android, arch: amd64, lwip: source, ndk: "x86_64-linux-android21" }
+          - { os: android, arch: "386", lwip: source, ndk: "i686-linux-android21" }
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -119,33 +138,36 @@ jobs:
           echo "PATH=$HOME/go/go_win7/bin:$PATH" >> $GITHUB_ENV
           echo "GOROOT=$HOME/go/go_win7" >> $GITHUB_ENV
       - name: Setup Android NDK
+        id: ndk
         if: matrix.os == 'android'
-        uses: nttld/setup-ndk@v1
+        uses: ./.github/actions/setup-android
+      - uses: mlugg/setup-zig@v2
+        if: matrix.cc != ''
         with:
-          ndk-version: r28
-          local-cache: true
+          version: '0.15.2'
+      - name: Install ARMv5 compiler runtime
+        if: matrix.libc == 'musl' && matrix.goarm == '5'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabi
       - name: Set tag
         run: |-
           git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$GITHUB_ENV"
           git tag v${{ needs.calculate_version.outputs.version }} -f
-      - name: Set build tags
-        run: |
-          set -xeuo pipefail
-          TAGS='with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale'
-          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
-            TAGS="${TAGS},with_cronet,with_purego"
-          fi
-          echo "BUILD_TAGS=${TAGS}" >> "${GITHUB_ENV}"
       - name: Build
         if: matrix.os != 'android'
         run: |
           set -xeuo pipefail
-          mkdir -p dist
-          go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
-          -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }}' \
-          ./cmd/sing-box
+          if [[ -n '${{ matrix.cc }}' ]]; then
+            export CC="bash $PWD/release/zig-cc.sh -target $TARGET_CC"
+          fi
+          bash release/build-native.sh
         env:
-          CGO_ENABLED: "0"
+          LWIP_MODE: ${{ matrix.lwip || 'disabled' }}
+          LWIP_LIBC: ${{ matrix.libc || 'gnu' }}
+          TARGET_CC: ${{ matrix.cc }}
+          WITH_CRONET: ${{ matrix.cronet || 'false' }}
+          VERSION: ${{ needs.calculate_version.outputs.version }}
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           GO386: ${{ matrix.go386 }}
@@ -157,22 +179,22 @@ jobs:
         if: matrix.os == 'android'
         run: |
           set -xeuo pipefail
-          go install -v ./cmd/internal/build
           export CC='${{ matrix.ndk }}-clang'
           export CXX="${CC}++"
-          mkdir -p dist
-          GOOS=$BUILD_GOOS GOARCH=$BUILD_GOARCH build go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
-          -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }}' \
-          ./cmd/sing-box
+          export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          bash release/build-native.sh
         env:
-          CGO_ENABLED: "1"
-          BUILD_GOOS: ${{ matrix.os }}
-          BUILD_GOARCH: ${{ matrix.arch }}
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          GOARM: ${{ matrix.goarm }}
+          LWIP_MODE: ${{ matrix.lwip }}
+          VERSION: ${{ needs.calculate_version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set name
         run: |-
           DIR_NAME="sing-box-${{ needs.calculate_version.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}"
-          if [[ -n "${{ matrix.goarm }}" ]]; then
+          if [[ '${{ matrix.os }}' == linux && -n "${{ matrix.goarm }}" ]]; then
             DIR_NAME="${DIR_NAME}v${{ matrix.goarm }}"
           elif [[ -n "${{ matrix.go386 }}" && "${{ matrix.go386 }}" != 'sse2' ]]; then
             DIR_NAME="${DIR_NAME}-${{ matrix.go386 }}"
@@ -181,21 +203,12 @@ jobs:
           elif [[ -n "${{ matrix.legacy_name }}" ]]; then
             DIR_NAME="${DIR_NAME}-legacy-${{ matrix.legacy_name }}"
           fi
+          if [[ -n '${{ matrix.variant }}' ]]; then DIR_NAME="${DIR_NAME}-${{ matrix.variant }}"; fi
+          if [[ '${{ matrix.libc }}' == musl ]]; then DIR_NAME="${DIR_NAME}-musl"; fi
           echo "DIR_NAME=${DIR_NAME}" >> "${GITHUB_ENV}"
           PKG_VERSION="${{ needs.calculate_version.outputs.version }}"
           PKG_VERSION="${PKG_VERSION//-/\~}"
           echo "PKG_VERSION=${PKG_VERSION}" >> "${GITHUB_ENV}"
-      - name: Stage Cronet library
-        if: matrix.cronet
-        run: |
-          set -xeuo pipefail
-          MODULE="github.com/sagernet/cronet-go/lib/${{ matrix.os }}_${{ matrix.arch }}"
-          MODULE_DIR="$(go list -m -f '{{.Dir}}' "${MODULE}")"
-          if [[ '${{ matrix.os }}' == 'windows' ]]; then
-            cp "${MODULE_DIR}/libcronet.dll" dist/libcronet.dll
-          else
-            cp "${MODULE_DIR}/libcronet.so" dist/libcronet.so
-          fi
       - name: Package DEB
         if: matrix.debian != ''
         run: |
@@ -209,9 +222,7 @@ jobs:
           retry sudo apt-get install -y debsigs
           cp .fpm_systemd .fpm
           PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
-          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
-            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
-          fi
+          source release/package-native.sh
           fpm -t deb \
             -v "$PKG_VERSION" \
             -p "dist/sing-box_${{ needs.calculate_version.outputs.version }}_${{ matrix.os }}_${{ matrix.debian }}.deb" \
@@ -243,9 +254,7 @@ jobs:
           retry sudo gem install fpm
           cp .fpm_systemd .fpm
           PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
-          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
-            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
-          fi
+          source release/package-native.sh
           fpm -t rpm \
             -v "$PKG_VERSION" \
             -p "dist/sing-box_${{ needs.calculate_version.outputs.version }}_${{ matrix.os }}_${{ matrix.rpm }}.rpm" \
@@ -269,9 +278,7 @@ jobs:
           retry sudo apt-get install -y libarchive-tools
           cp .fpm_systemd .fpm
           PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
-          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
-            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
-          fi
+          source release/package-native.sh
           fpm -t pacman \
             -v "$PKG_VERSION" \
             -p "dist/sing-box_${{ needs.calculate_version.outputs.version }}_${{ matrix.os }}_${{ matrix.pacman }}.pkg.tar.zst" \
@@ -284,10 +291,12 @@ jobs:
           retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i/5 failed: $*" >&2; sleep $((i*10)); done; return 1; }
           retry sudo gem install fpm
           cp .fpm_openwrt .fpm
-          PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
-          if [[ '${{ matrix.cronet }}' == 'true' ]]; then
-            PACKAGE_FILES+=(dist/libcronet.so=/usr/bin/libcronet.so)
+          if readelf -l dist/sing-box | grep -q INTERP || readelf -d dist/sing-box | grep -q NEEDED; then
+            echo 'OpenWrt packages require a fully static executable' >&2
+            exit 1
           fi
+          PACKAGE_FILES=(dist/sing-box=/usr/bin/sing-box)
+          source release/package-native.sh
           fpm -t deb \
             -v "$PKG_VERSION" \
             -p "dist/openwrt.deb" \
@@ -303,26 +312,24 @@ jobs:
           cd dist
           mkdir -p "${DIR_NAME}"
           cp ../LICENSE "${DIR_NAME}"
+          if [ -d licenses ]; then cp -R licenses "${DIR_NAME}/"; fi
+          for library in libcronet.dll libcronet.so sing-lwip.dll libsing-lwip.so libsing-lwip.dylib; do
+            if [ -f "$library" ]; then cp "$library" "${DIR_NAME}/"; fi
+          done
           if [ '${{ matrix.os }}' = 'windows' ]; then
             cp sing-box "${DIR_NAME}/sing-box.exe"
-            if [ -f libcronet.dll ]; then
-              cp libcronet.dll "${DIR_NAME}/libcronet.dll"
-            fi
             zip -r "${DIR_NAME}.zip" "${DIR_NAME}"
           else
             cp sing-box "${DIR_NAME}"
-            if [ -f libcronet.so ]; then
-              cp libcronet.so "${DIR_NAME}/libcronet.so"
-            fi
             tar -czvf "${DIR_NAME}.tar.gz" "${DIR_NAME}"
           fi
           rm -r "${DIR_NAME}"
       - name: Cleanup
-        run: rm -f dist/sing-box dist/libcronet.so dist/libcronet.dll
+        run: rm -rf dist/sing-box dist/libcronet.so dist/libcronet.dll dist/libsing-lwip.so dist/libsing-lwip.dylib dist/sing-lwip.dll dist/licenses
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ matrix.os }}_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.go386 && format('_{0}', matrix.go386) }}${{ matrix.gomips && format('_{0}', matrix.gomips) }}${{ matrix.legacy_name && format('-legacy-{0}', matrix.legacy_name) }}
+          name: binary-${{ matrix.os }}_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.go386 && format('_{0}', matrix.go386) }}${{ matrix.gomips && format('_{0}', matrix.gomips) }}${{ matrix.variant && format('-{0}', matrix.variant) }}${{ matrix.libc && format('-{0}', matrix.libc) }}${{ matrix.legacy_name && format('-legacy-{0}', matrix.legacy_name) }}
           path: "dist"
   upload:
     name: Upload builds
@@ -360,17 +367,21 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Hash release artifacts
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
       - name: Upload builds
         if: ${{ env.PUBLISHED == 'false' }}
         run: |-
           export PATH="$PATH:$HOME/go/bin"
-          ghr --replace --draft --prerelease -p 5 "v${VERSION}" dist
+          ghr --replace --draft --prerelease -c "$GITHUB_SHA" -p 5 "v${VERSION}" dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Replace builds
         if: ${{ env.PUBLISHED != 'false' }}
         run: |-
           export PATH="$PATH:$HOME/go/bin"
-          ghr --replace -p 5 "v${VERSION}" dist
+          ghr --replace -c "$GITHUB_SHA" -p 5 "v${VERSION}" dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
