@@ -13,6 +13,7 @@ on:
       - '.github/workflows/native-release.yml'
       - '.github/workflows/build.yml'
       - '.github/workflows/linux.yml'
+      - '.github/actions/setup-android/**'
   pull_request:
   workflow_dispatch:
 
@@ -202,11 +203,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.10'
-      - uses: nttld/setup-ndk@v1
+      - uses: ./.github/actions/setup-android
         id: ndk
-        with:
-          ndk-version: r28
-          local-cache: true
       - name: Build API-21 static lwIP CLI
         run: |
           export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
@@ -254,11 +252,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: nttld/setup-ndk@v1
+      - uses: ./.github/actions/setup-android
         id: ndk
-        with:
-          ndk-version: r28
-          local-cache: true
       - name: Install pinned mobile tools
         run: go install github.com/sagernet/gomobile/cmd/gomobile github.com/sagernet/gomobile/cmd/gobind
       - name: Build standard and legacy AARs

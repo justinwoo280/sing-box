@@ -1,0 +1,35 @@
+name: Set up Android toolchain
+description: Install and verify the pinned Android NDK without relocated symlink caches
+
+outputs:
+  ndk-path:
+    description: Verified NDK installation
+    value: ${{ steps.ndk.outputs.ndk-path }}
+
+runs:
+  using: composite
+  steps:
+    - uses: nttld/setup-ndk@v1
+      id: ndk
+      with:
+        ndk-version: r28
+        # setup-ndk's local-cache copy resolves relative symlinks to the
+        # original tool-cache directory. That directory is absent on restore.
+        local-cache: false
+        add-to-path: false
+    - name: Verify compiler and Android linking
+      shell: bash
+      env:
+        ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+      run: |
+        set -euo pipefail
+        grep -Eq '^Pkg.Revision *= *28\.0\.13004108' "$ANDROID_NDK_HOME/source.properties"
+        bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        "$bin/clang" --version
+        "$bin/ld.lld" --version
+        probe=$(mktemp -d "$RUNNER_TEMP/ndk-probe.XXXXXX")
+        trap 'rm -rf "$probe"' EXIT
+        for target in aarch64-linux-android21 armv7a-linux-androideabi21 x86_64-linux-android21 i686-linux-android21; do
+          printf 'int ndk_probe(void) { return 0; }\n' | \
+            "$bin/$target-clang" -x c - -shared -fPIC -o "$probe/$target.so"
+        done
