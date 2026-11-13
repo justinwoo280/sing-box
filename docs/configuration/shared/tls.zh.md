@@ -290,6 +290,11 @@ TLS 版本值：
 
 参阅 [Application-Layer Protocol Negotiation](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation)。
 
+XHTTP 启用 `browser: true` 时，配置 `["h3"]` 即通过出站的 UDP 拨号器使用 HTTP/3；
+配置 `["h2"]`、`["http/1.1"]` 或 `["h2", "http/1.1"]` 则使用 TCP/TLS，无需额外的 H3 开关。
+H3 不回退到 TCP，也不能与 TCP ALPN 条目混用。`stream-one` 和 `grpc_framing` 需要 h2 或 h3；
+Browser REALITY 和 Strict ECH 当前需要 TCP。ALPN 留空时保持原有行为。
+
 #### min_version
 
 可接受的最低 TLS 版本。

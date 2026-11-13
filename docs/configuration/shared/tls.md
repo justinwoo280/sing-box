@@ -291,6 +291,12 @@ no mutually supported protocol.
 
 See [Application-Layer Protocol Negotiation](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation).
 
+For XHTTP with `browser: true`, use `["h3"]` to select HTTP/3 through the outbound's
+UDP dialer, or `["h2"]`, `["http/1.1"]`, or `["h2", "http/1.1"]` for TCP/TLS.
+No additional H3 switch is needed. H3 has no TCP fallback and cannot be mixed with
+TCP ALPN entries. `stream-one` and `grpc_framing` require h2 or h3; Browser REALITY
+and Strict ECH currently require TCP. Leaving ALPN unset preserves existing behavior.
+
 #### min_version
 
 The minimum TLS version that is acceptable.

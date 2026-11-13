@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -138,7 +139,13 @@ func TestBrowserTLSOptions(t *testing.T) {
 		{"disable-sni", option.OutboundTLSOptions{DisableSNI: true}, "disable_sni"},
 		{"fragment", option.OutboundTLSOptions{Fragment: true}, "fragmentation"},
 		{"version", option.OutboundTLSOptions{MinVersion: "1.3"}, "version"},
-		{"alpn-h3", option.OutboundTLSOptions{ALPN: []string{"h3"}}, "ALPN"},
+		{"alpn-h3", option.OutboundTLSOptions{ALPN: []string{"h3"}}, ""},
+		{"alpn-h2", option.OutboundTLSOptions{ALPN: []string{"h2"}}, ""},
+		{"alpn-h1", option.OutboundTLSOptions{ALPN: []string{"http/1.1"}}, ""},
+		{"alpn-ordered", option.OutboundTLSOptions{ALPN: []string{"http/1.1", "h2"}}, ""},
+		{"alpn-mixed", option.OutboundTLSOptions{ALPN: []string{"h3", "h2"}}, "ALPN"},
+		{"alpn-duplicate", option.OutboundTLSOptions{ALPN: []string{"h2", "h2"}}, "ALPN"},
+		{"alpn-unknown", option.OutboundTLSOptions{ALPN: []string{"unknown"}}, "ALPN"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			test.options.Enabled = true
@@ -151,6 +158,16 @@ func TestBrowserTLSOptions(t *testing.T) {
 			if test.wantError == "" {
 				if err != nil || options.ServerName != "browser.test" {
 					t.Fatalf("export = %q, %v", options.ServerName, err)
+				}
+				if !slices.Equal(options.ALPN, []string(test.options.ALPN)) {
+					t.Fatalf("exported ALPN = %v", options.ALPN)
+				}
+				if len(options.ALPN) > 0 {
+					options.ALPN[0] = "changed"
+					again, err := exporter.BrowserTLSConfig()
+					if err != nil || again.ALPN[0] == "changed" {
+						t.Fatal("ALPN export shares mutable configuration")
+					}
 				}
 			} else if err == nil || !strings.Contains(err.Error(), test.wantError) {
 				t.Fatalf("error = %v", err)

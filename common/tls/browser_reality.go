@@ -52,6 +52,9 @@ func (c *browserRealityConfig) BrowserTLSConfig() (BrowserTLSOptions, error) {
 	if err != nil {
 		return options, err
 	}
+	if len(options.ALPN) == 1 && options.ALPN[0] == "h3" {
+		return options, errors.New("browser REALITY does not support h3 ALPN")
+	}
 	reality := c.reality
 	options.Reality = &reality
 	return options, nil

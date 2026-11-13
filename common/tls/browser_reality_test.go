@@ -50,6 +50,7 @@ func TestBrowserRealityConfiguration(t *testing.T) {
 		{"short-id", "short_id", func(o *option.OutboundTLSOptions) { o.Reality.ShortID = "010203040506070809" }},
 		{"ech", "ECH", func(o *option.OutboundTLSOptions) { o.ECH = &option.OutboundECHOptions{Enabled: true} }},
 		{"insecure", "insecure", func(o *option.OutboundTLSOptions) { o.Insecure = true }},
+		{"h3", "h3 ALPN", func(o *option.OutboundTLSOptions) { o.ALPN = []string{"h3"} }},
 		{"curves", "curve", func(o *option.OutboundTLSOptions) { o.CurvePreferences = []option.CurvePreference{29} }},
 		{"fingerprint", "fingerprint", func(o *option.OutboundTLSOptions) {
 			o.UTLS = &option.OutboundUTLSOptions{Enabled: true, Fingerprint: "firefox"}

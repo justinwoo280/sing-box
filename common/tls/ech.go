@@ -207,6 +207,9 @@ func (s *ECHClientConfig) BrowserTLSConfig() (BrowserTLSOptions, error) {
 	if err != nil {
 		return options, err
 	}
+	if len(options.ALPN) == 1 && options.ALPN[0] == "h3" {
+		return options, E.New("browser Strict ECH does not support h3 ALPN")
+	}
 	options.ECHConfigList = nil
 	options.GetECHConfigList = func(ctx context.Context) ([]byte, error) {
 		s.access.Lock()

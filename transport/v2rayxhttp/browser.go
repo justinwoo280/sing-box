@@ -67,6 +67,13 @@ func newBrowserClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksad
 		u.Scheme = "https"
 		u.Host = net.JoinHostPort(serverName, strconv.Itoa(int(serverAddr.Port)))
 		opts.TrustedRootCertificates = browserTLS.CertificatePEM
+		opts.ALPN = browserTLS.ALPN
+		if len(browserTLS.ALPN) == 1 && browserTLS.ALPN[0] == "h3" {
+			opts.DisableQUIC = false
+			opts.DialUDPContext = func(ctx context.Context) (net.Conn, error) {
+				return dialer.DialContext(ctx, N.NetworkUDP, serverAddr)
+			}
+		}
 		opts.UseTrustedRootCertificates = browserTLS.UseTrustedRootCertificates
 		opts.ECHConfigList = browserTLS.ECHConfigList
 		opts.GetECHConfigList = browserTLS.GetECHConfigList
