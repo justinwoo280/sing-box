@@ -122,7 +122,7 @@ require (
 	github.com/justinwoo280/sing-lwip/lib/windows_386 v0.0.0-20261110151646-c447d5af480c // indirect
 	github.com/justinwoo280/sing-lwip/lib/windows_amd64 v0.0.0-20261110151646-c447d5af480c // indirect
 	github.com/justinwoo280/sing-lwip/lib/windows_arm64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-xhttp v0.1.7-0.20261008120903-6f71916eb93e // indirect
+	github.com/justinwoo280/sing-xhttp v0.1.7-0.20261123151222-4d9b1bf62aa1 // indirect
 	github.com/keybase/go-keychain v0.0.1 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect

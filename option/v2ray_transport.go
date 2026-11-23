@@ -1,6 +1,8 @@
 package option
 
 import (
+	"bytes"
+	"context"
 	"crypto/rand"
 	stdjson "encoding/json"
 	"fmt"
@@ -49,7 +51,7 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = o.HTTPUpgradeOptions
 	case C.V2RayTransportTypeXHTTP:
-		v = o.XHTTPOptions
+		return marshalRawOptions(context.Background(), _V2RayTransportOptions(o), o.XHTTPOptions)
 	case "":
 		return nil, E.New("missing transport type")
 	default:
@@ -76,7 +78,7 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = &o.HTTPUpgradeOptions
 	case C.V2RayTransportTypeXHTTP:
-		v = &o.XHTTPOptions
+		return unmarshalRawOptions(context.Background(), bytes, &o.XHTTPOptions, "type")
 	default:
 		return E.New("unknown transport type: " + o.Type)
 	}
@@ -136,7 +138,8 @@ type V2RayXHTTPBaseOptions struct {
 	Mode                 string                 `json:"mode"`
 	Host                 string                 `json:"host,omitempty"`
 	Path                 string                 `json:"path,omitempty"`
-	Headers              map[string]string      `json:"headers,omitempty"`
+	UplinkHTTPMethod     string                 `json:"uplink_http_method,omitempty"`
+	Headers              badoption.HTTPHeader   `json:"headers,omitempty"`
 	DomainStrategy       DomainStrategy         `json:"domain_strategy,omitempty"`
 	XPaddingBytes        V2RayXHTTPRange        `json:"x_padding_bytes"`
 	NoGRPCHeader         bool                   `json:"no_grpc_header,omitempty"`
@@ -144,9 +147,27 @@ type V2RayXHTTPBaseOptions struct {
 	GRPCFraming          bool                   `json:"grpc_framing,omitempty"`
 	ScMaxEachPostBytes   V2RayXHTTPRange        `json:"sc_max_each_post_bytes"`
 	ScMinPostsIntervalMs V2RayXHTTPRange        `json:"sc_min_posts_interval_ms"`
-	ScMaxBufferedPosts   int64                  `json:"sc_max_buffered_posts,omitempty"`
+	ScMaxBufferedPosts   int32                  `json:"sc_max_buffered_posts,omitempty"`
 	ScStreamUpServerSecs V2RayXHTTPRange        `json:"sc_stream_up_server_secs"`
 	Xmux                 *V2RayXHTTPXmuxOptions `json:"xmux"`
+
+	XPaddingObfsMode  bool   `json:"x_padding_obfs_mode,omitempty"`
+	XPaddingPlacement string `json:"x_padding_placement,omitempty"`
+	XPaddingKey       string `json:"x_padding_key,omitempty"`
+	XPaddingHeader    string `json:"x_padding_header,omitempty"`
+	XPaddingMethod    string `json:"x_padding_method,omitempty"`
+
+	SessionPlacement string          `json:"session_placement,omitempty"`
+	SessionKey       string          `json:"session_key,omitempty"`
+	SeqPlacement     string          `json:"seq_placement,omitempty"`
+	SeqKey           string          `json:"seq_key,omitempty"`
+	SessionIDTable   string          `json:"session_id_table,omitempty"`
+	SessionIDLength  V2RayXHTTPRange `json:"session_id_length,omitzero"`
+
+	UplinkDataPlacement  string          `json:"uplink_data_placement,omitempty"`
+	UplinkDataKey        string          `json:"uplink_data_key,omitempty"`
+	UplinkChunkSize      V2RayXHTTPRange `json:"uplink_chunk_size,omitzero"`
+	ServerMaxHeaderBytes int32           `json:"server_max_header_bytes,omitempty"`
 }
 
 type V2RayXHTTPOptions struct {
@@ -156,10 +177,28 @@ type V2RayXHTTPOptions struct {
 }
 
 type V2RayXHTTPDownloadOptions struct {
-	V2RayXHTTPBaseOptions
-	ServerOptions
+	Server     string `json:"server,omitempty"`
+	ServerPort uint16 `json:"server_port,omitempty"`
 	OutboundTLSOptionsContainer
-	Detour string `json:"detour,omitempty"`
+	Detour         string                `json:"detour,omitempty" reference:"outbound"`
+	DomainResolver *DomainResolveOptions `json:"domain_resolver,omitempty"`
+	DomainStrategy DomainStrategy        `json:"domain_strategy,omitempty"`
+
+	Host    string               `json:"host,omitempty"`
+	Path    string               `json:"path,omitempty"`
+	Headers badoption.HTTPHeader `json:"headers,omitzero"`
+
+	// Nil inherits from the uplink; explicit zero or empty values use the
+	// library defaults. Headers and XMUX are replaced as whole objects.
+	XPaddingBytes     *V2RayXHTTPRange       `json:"x_padding_bytes,omitempty"`
+	XPaddingObfsMode  *bool                  `json:"x_padding_obfs_mode,omitempty"`
+	XPaddingPlacement *string                `json:"x_padding_placement,omitempty"`
+	XPaddingKey       *string                `json:"x_padding_key,omitempty"`
+	XPaddingHeader    *string                `json:"x_padding_header,omitempty"`
+	XPaddingMethod    *string                `json:"x_padding_method,omitempty"`
+	SessionPlacement  *string                `json:"session_placement,omitempty"`
+	SessionKey        *string                `json:"session_key,omitempty"`
+	Xmux              *V2RayXHTTPXmuxOptions `json:"xmux,omitempty"`
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedPath() string {
@@ -183,10 +222,7 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedQuery() string {
 }
 
 func (c *V2RayXHTTPBaseOptions) GetRequestHeader(rawURL string) http.Header {
-	header := http.Header{}
-	for k, v := range c.Headers {
-		header.Add(k, v)
-	}
+	header := c.Headers.Build()
 	u, _ := url.Parse(rawURL)
 	u.RawQuery = "x_padding=" + strings.Repeat("X", int(c.GetNormalizedXPaddingBytes().Rand()))
 	header.Set("Referer", u.String())
@@ -234,7 +270,7 @@ type V2RayXHTTPXmuxOptions struct {
 	CMaxReuseTimes   V2RayXHTTPRange `json:"c_max_reuse_times"`
 	HMaxRequestTimes V2RayXHTTPRange `json:"h_max_request_times"`
 	HMaxReusableSecs V2RayXHTTPRange `json:"h_max_reusable_secs"`
-	HKeepAlivePeriod int64           `json:"h_keep_alive_period"`
+	HKeepAlivePeriod int32           `json:"h_keep_alive_period"`
 }
 
 type V2RayXHTTPRange struct {
@@ -243,18 +279,19 @@ type V2RayXHTTPRange struct {
 }
 
 func (r V2RayXHTTPRange) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
-	objectForm := schema.StrictObject()
-	if err := builder.FlattenStruct(objectForm, reflect.TypeFor[V2RayXHTTPRange]()); err != nil {
-		return nil, err
-	}
-	return schema.AnyOf(schema.StringNode(), objectForm), nil
+	return builder.Define("V2RayXHTTPRange", func() (*schema.Node, error) {
+		objectForm := schema.StrictObject()
+		objectForm.Properties.Put("from", schema.UnsignedNode(31))
+		objectForm.Properties.Put("to", schema.UnsignedNode(31))
+		return schema.AnyOf(schema.UnsignedNode(31), &schema.Node{Type: "string", Pattern: `^\s*[0-9]+\s*(-\s*[0-9]+\s*)?$`}, objectForm), nil
+	})
 }
 
 func (r V2RayXHTTPRange) Rand() int32 {
 	if r.To <= r.From {
 		return r.From
 	}
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(r.To-r.From)+1))
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(r.To)-int64(r.From)+1))
 	if err != nil {
 		return r.From
 	}
@@ -266,31 +303,42 @@ func (r V2RayXHTTPRange) MarshalJSON() ([]byte, error) {
 }
 
 func (r *V2RayXHTTPRange) UnmarshalJSON(content []byte) error {
-	var object struct {
-		From int32 `json:"from"`
-		To   int32 `json:"to"`
-	}
-	var stringValue string
-	if err := stdjson.Unmarshal(content, &stringValue); err == nil {
-		parts := strings.Split(stringValue, "-")
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid range %q", stringValue)
-		}
-		from, err := strconv.ParseInt(parts[0], 10, 32)
-		if err != nil {
+	var value V2RayXHTTPRange
+	content = bytes.TrimSpace(content)
+	switch {
+	case bytes.Equal(content, []byte("null")):
+	case len(content) > 0 && content[0] == '{':
+		type rangeObject V2RayXHTTPRange
+		if err := json.UnmarshalDisallowUnknownFields(content, (*rangeObject)(&value)); err != nil {
 			return err
 		}
-		to, err := strconv.ParseInt(parts[1], 10, 32)
-		if err != nil {
+	case len(content) > 0 && content[0] == '"':
+		var raw string
+		if err := stdjson.Unmarshal(content, &raw); err != nil {
 			return err
 		}
-		object.From, object.To = int32(from), int32(to)
-	} else if err := stdjson.Unmarshal(content, &object); err != nil {
-		return err
+		fromText, toText, isRange := strings.Cut(raw, "-")
+		from, err := strconv.ParseUint(strings.TrimSpace(fromText), 10, 31)
+		if err != nil {
+			return fmt.Errorf("invalid range %q: %w", raw, err)
+		}
+		to := from
+		if isRange {
+			to, err = strconv.ParseUint(strings.TrimSpace(toText), 10, 31)
+			if err != nil {
+				return fmt.Errorf("invalid range %q: %w", raw, err)
+			}
+		}
+		value.From, value.To = int32(from), int32(to)
+	default:
+		if err := stdjson.Unmarshal(content, &value.From); err != nil {
+			return fmt.Errorf("invalid range: %w", err)
+		}
+		value.To = value.From
 	}
-	if object.From > object.To {
-		return fmt.Errorf("invalid range: %d-%d", object.From, object.To)
+	if value.From < 0 || value.To < value.From {
+		return fmt.Errorf("invalid range: %d-%d (expected 0 <= from <= to)", value.From, value.To)
 	}
-	*r = V2RayXHTTPRange{From: object.From, To: object.To}
+	*r = value
 	return nil
 }

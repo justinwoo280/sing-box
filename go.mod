@@ -20,7 +20,7 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20260220084031-5adc3eb26f91
 	github.com/jsimonetti/rtnetlink v1.4.1
 	github.com/justinwoo280/sing-ewp v0.3.2-0.20261023015301-0b89075e7185
-	github.com/justinwoo280/sing-xhttp v0.1.7-0.20261008120903-6f71916eb93e
+	github.com/justinwoo280/sing-xhttp v0.1.7-0.20261123151222-4d9b1bf62aa1
 	github.com/keybase/go-keychain v0.0.1
 	github.com/libdns/acmedns v0.5.0
 	github.com/libdns/alidns v1.0.6

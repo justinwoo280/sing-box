@@ -5,7 +5,6 @@ package xhttp
 import (
 	"context"
 	"net"
-	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
@@ -24,13 +23,10 @@ func newBrowserClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksad
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if options.Download != nil {
-		return nil, E.New("xhttp: browser does not support separate download settings")
-	}
 	u := url.URL{Scheme: "http", Host: serverAddr.String()}
 	opts := cronet.BrowserXHTTPOptions{
 		Mode: options.Mode, Host: options.Host, Path: options.Path,
-		Headers: make(http.Header), NoGRPCHeader: options.NoGRPCHeader, NoSSEHeader: options.NoSSEHeader,
+		Headers: options.Headers.Build(), NoGRPCHeader: options.NoGRPCHeader, NoSSEHeader: options.NoSSEHeader,
 		GRPCFraming:          options.GRPCFraming,
 		XPaddingBytes:        browserRange(options.XPaddingBytes),
 		ScMaxEachPostBytes:   browserRange(options.ScMaxEachPostBytes),
@@ -40,9 +36,6 @@ func newBrowserClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksad
 		DialContext: func(ctx context.Context) (net.Conn, error) {
 			return dialer.DialContext(ctx, N.NetworkTCP, serverAddr)
 		},
-	}
-	for key, value := range options.Headers {
-		opts.Headers.Set(key, value)
 	}
 	if opts.Host == "" {
 		opts.Host = serverAddr.String()

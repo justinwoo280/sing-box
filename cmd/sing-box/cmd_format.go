@@ -38,16 +38,16 @@ func format() error {
 		return err
 	}
 	for _, optionsEntry := range optionsList {
-		comments := optionsEntry.options.Comments()
-		optionsEntry.options, err = badjson.Omitempty(globalCtx, optionsEntry.options)
+		formatted, err := badjson.Omitempty(globalCtx, optionsEntry.options)
 		if err != nil {
 			return err
 		}
-		optionsEntry.options.SetComments(comments)
+		preserveXHTTPDownloads(formatted.Outbounds, optionsEntry.options.Outbounds)
+		formatted.SetComments(optionsEntry.options.Comments())
 		buffer := new(bytes.Buffer)
 		encoder := json.NewEncoder(buffer)
 		encoder.SetIndent("", "  ")
-		err = encoder.Encode(optionsEntry.options)
+		err = encoder.Encode(formatted)
 		if err != nil {
 			return E.Cause(err, "encode config")
 		}

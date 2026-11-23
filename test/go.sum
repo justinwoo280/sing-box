@@ -309,8 +309,8 @@ github.com/justinwoo280/sing-lwip/lib/windows_arm64 v0.0.0-20261110151646-c447d5
 github.com/justinwoo280/sing-lwip/lib/windows_arm64 v0.0.0-20261110151646-c447d5af480c/go.mod h1:vlpup0UoyYdYTV6+H4tqTG/ZXnDvuthvbXIg6ZEtP8M=
 github.com/justinwoo280/sing-tun v0.9.7-0.20261030092842-6fef878601c0 h1:QCyqeQj4dsaZk6vJZynBQCKnkYemGV3mRnipwAIUwXg=
 github.com/justinwoo280/sing-tun v0.9.7-0.20261030092842-6fef878601c0/go.mod h1:10T8mcLl01qruKBKthWP/P9Yeyx1UYwyPJs6DO69Zfo=
-github.com/justinwoo280/sing-xhttp v0.1.7-0.20261008120903-6f71916eb93e h1:48KTewxQWuGVHo0BLKg7o8VdLO5af+6XSIKdnetJCNA=
-github.com/justinwoo280/sing-xhttp v0.1.7-0.20261008120903-6f71916eb93e/go.mod h1:Xa0J6en8cmoWvREZi5ddmJrPvOOF4BSmjDPvwhXGFcA=
+github.com/justinwoo280/sing-xhttp v0.1.7-0.20261123151222-4d9b1bf62aa1 h1:dL+NNHOeVRE7Tao5cv4sPaDk+oGnlfIP7yg/k07ggqw=
+github.com/justinwoo280/sing-xhttp v0.1.7-0.20261123151222-4d9b1bf62aa1/go.mod h1:Xa0J6en8cmoWvREZi5ddmJrPvOOF4BSmjDPvwhXGFcA=
 github.com/keybase/go-keychain v0.0.1 h1:way+bWYa6lDppZoZcgMbYsvC7GxljxrskdNInRtuthU=
 github.com/keybase/go-keychain v0.0.1/go.mod h1:PdEILRW3i9D8JcdM+FmY6RwkHGnhHxXwkPPMeUgOK1k=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=

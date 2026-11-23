@@ -17578,33 +17578,17 @@
             "path": {
               "type": "string"
             },
+            "uplink_http_method": {
+              "type": "string"
+            },
             "headers": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
+              "$ref": "#/$defs/HTTPHeader"
             },
             "domain_strategy": {
               "$ref": "#/$defs/DomainStrategy"
             },
             "x_padding_bytes": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "from": {
-                      "type": "integer"
-                    },
-                    "to": {
-                      "type": "integer"
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              ]
+              "$ref": "#/$defs/V2RayXHTTPRange"
             },
             "no_grpc_header": {
               "type": "boolean"
@@ -17616,67 +17600,64 @@
               "type": "boolean"
             },
             "sc_max_each_post_bytes": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "from": {
-                      "type": "integer"
-                    },
-                    "to": {
-                      "type": "integer"
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              ]
+              "$ref": "#/$defs/V2RayXHTTPRange"
             },
             "sc_min_posts_interval_ms": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "from": {
-                      "type": "integer"
-                    },
-                    "to": {
-                      "type": "integer"
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              ]
+              "$ref": "#/$defs/V2RayXHTTPRange"
             },
             "sc_max_buffered_posts": {
               "type": "integer"
             },
             "sc_stream_up_server_secs": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "from": {
-                      "type": "integer"
-                    },
-                    "to": {
-                      "type": "integer"
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              ]
+              "$ref": "#/$defs/V2RayXHTTPRange"
             },
             "xmux": {
               "$ref": "#/$defs/V2RayXHTTPXmuxOptions"
+            },
+            "x_padding_obfs_mode": {
+              "type": "boolean"
+            },
+            "x_padding_placement": {
+              "type": "string"
+            },
+            "x_padding_key": {
+              "type": "string"
+            },
+            "x_padding_header": {
+              "type": "string"
+            },
+            "x_padding_method": {
+              "type": "string"
+            },
+            "session_placement": {
+              "type": "string"
+            },
+            "session_key": {
+              "type": "string"
+            },
+            "seq_placement": {
+              "type": "string"
+            },
+            "seq_key": {
+              "type": "string"
+            },
+            "session_id_table": {
+              "type": "string"
+            },
+            "session_id_length": {
+              "$ref": "#/$defs/V2RayXHTTPRange"
+            },
+            "uplink_data_placement": {
+              "type": "string"
+            },
+            "uplink_data_key": {
+              "type": "string"
+            },
+            "uplink_chunk_size": {
+              "$ref": "#/$defs/V2RayXHTTPRange"
+            },
+            "server_max_header_bytes": {
+              "type": "integer"
             },
             "browser": {
               "type": "boolean"
@@ -17695,115 +17676,6 @@
     "V2RayXHTTPDownloadOptions": {
       "type": "object",
       "properties": {
-        "mode": {
-          "type": "string"
-        },
-        "host": {
-          "type": "string"
-        },
-        "path": {
-          "type": "string"
-        },
-        "headers": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "domain_strategy": {
-          "$ref": "#/$defs/DomainStrategy"
-        },
-        "x_padding_bytes": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
-        },
-        "no_grpc_header": {
-          "type": "boolean"
-        },
-        "no_sse_header": {
-          "type": "boolean"
-        },
-        "grpc_framing": {
-          "type": "boolean"
-        },
-        "sc_max_each_post_bytes": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
-        },
-        "sc_min_posts_interval_ms": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
-        },
-        "sc_max_buffered_posts": {
-          "type": "integer"
-        },
-        "sc_stream_up_server_secs": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
-        },
-        "xmux": {
-          "$ref": "#/$defs/V2RayXHTTPXmuxOptions"
-        },
         "server": {
           "type": "string"
         },
@@ -17816,108 +17688,100 @@
           "$ref": "#/$defs/OutboundTLSOptions"
         },
         "detour": {
+          "type": "string",
+          "x-tag-reference": "outbound"
+        },
+        "domain_resolver": {
+          "$ref": "#/$defs/DomainResolver"
+        },
+        "domain_strategy": {
+          "$ref": "#/$defs/DomainStrategy"
+        },
+        "host": {
           "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "headers": {
+          "$ref": "#/$defs/HTTPHeader"
+        },
+        "x_padding_bytes": {
+          "$ref": "#/$defs/V2RayXHTTPRange"
+        },
+        "x_padding_obfs_mode": {
+          "type": "boolean"
+        },
+        "x_padding_placement": {
+          "type": "string"
+        },
+        "x_padding_key": {
+          "type": "string"
+        },
+        "x_padding_header": {
+          "type": "string"
+        },
+        "x_padding_method": {
+          "type": "string"
+        },
+        "session_placement": {
+          "type": "string"
+        },
+        "session_key": {
+          "type": "string"
+        },
+        "xmux": {
+          "$ref": "#/$defs/V2RayXHTTPXmuxOptions"
         }
       },
       "additionalProperties": false
+    },
+    "V2RayXHTTPRange": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "string",
+          "pattern": "^\\s*[0-9]+\\s*(-\\s*[0-9]+\\s*)?$"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "to": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "V2RayXHTTPXmuxOptions": {
       "type": "object",
       "properties": {
         "max_concurrency": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
+          "$ref": "#/$defs/V2RayXHTTPRange"
         },
         "max_connections": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
+          "$ref": "#/$defs/V2RayXHTTPRange"
         },
         "c_max_reuse_times": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
+          "$ref": "#/$defs/V2RayXHTTPRange"
         },
         "h_max_request_times": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
+          "$ref": "#/$defs/V2RayXHTTPRange"
         },
         "h_max_reusable_secs": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "type": "integer"
-                },
-                "to": {
-                  "type": "integer"
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
+          "$ref": "#/$defs/V2RayXHTTPRange"
         },
         "h_keep_alive_period": {
           "type": "integer"

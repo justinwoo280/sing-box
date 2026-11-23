@@ -80,3 +80,10 @@ func NewClientTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socks
 		return nil, E.New("unknown transport type: " + options.Type)
 	}
 }
+
+func NewOutboundClientTransport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, dialOptions option.DialerOptions, serverAddr M.Socksaddr, options option.V2RayTransportOptions, tlsConfig tls.Config) (adapter.V2RayClientTransport, error) {
+	if options.Type == C.V2RayTransportTypeXHTTP {
+		return xhttp.NewClientWithDialerOptions(ctx, logger, dialer, &dialOptions, serverAddr, options.XHTTPOptions, tlsConfig)
+	}
+	return NewClientTransport(ctx, dialer, serverAddr, options, tlsConfig)
+}

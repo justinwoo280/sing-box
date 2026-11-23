@@ -113,6 +113,7 @@ func mergeOptionsList(optionsList []*OptionsEntry) (option.Options, error) {
 	}
 	var (
 		mergedMessage json.RawMessage
+		outbounds     []option.Outbound
 		err           error
 	)
 	for _, options := range optionsList {
@@ -120,12 +121,14 @@ func mergeOptionsList(optionsList []*OptionsEntry) (option.Options, error) {
 		if err != nil {
 			return option.Options{}, E.Cause(err, "merge config at ", options.path)
 		}
+		outbounds = append(outbounds, options.options.Outbounds...)
 	}
 	var mergedOptions option.Options
 	err = mergedOptions.UnmarshalJSONContext(globalCtx, mergedMessage)
 	if err != nil {
 		return option.Options{}, E.Cause(err, "unmarshal merged config")
 	}
+	preserveXHTTPDownloads(mergedOptions.Outbounds, outbounds)
 	return mergedOptions, nil
 }
 

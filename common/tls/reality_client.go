@@ -127,6 +127,10 @@ func (e *RealityClientConfig) STDConfig() (*STDConfig, error) {
 	return nil, E.New("unsupported usage for reality")
 }
 
+func (e *RealityClientConfig) IsReality() bool {
+	return true
+}
+
 func (e *RealityClientConfig) Client(conn net.Conn) (Conn, error) {
 	return ClientHandshake(context.Background(), conn, e)
 }

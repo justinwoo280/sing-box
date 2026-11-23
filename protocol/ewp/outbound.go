@@ -57,7 +57,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 	o := &Outbound{
-		Adapter:    outbound.NewAdapterWithDialerOptions(C.TypeEWP, tag, options.Network.Build(), options.DialerOptions),
+		Adapter:    outbound.NewAdapterWithTransportOptions(C.TypeEWP, tag, options.Network.Build(), options.DialerOptions, options.Transport),
 		logger:     logger,
 		dialer:     outboundDialer,
 		serverAddr: options.ServerOptions.Build(),
@@ -69,7 +69,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		}
 	}
 	if options.Transport != nil {
-		o.transport, err = v2ray.NewClientTransport(ctx, o.dialer, o.serverAddr, common.PtrValueOrDefault(options.Transport), o.tlsConfig)
+		o.transport, err = v2ray.NewOutboundClientTransport(ctx, logger, o.dialer, options.DialerOptions, o.serverAddr, *options.Transport, o.tlsConfig)
 		if err != nil {
 			return nil, E.Cause(err, "create client transport: ", options.Transport.Type)
 		}

@@ -16,6 +16,11 @@ type KTLSClientConfig struct {
 	kernelTx, kernelRx bool
 }
 
+func (w *KTLSClientConfig) IsReality() bool {
+	reality, ok := w.Config.(interface{ IsReality() bool })
+	return ok && reality.IsReality()
+}
+
 func (w *KTLSClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) (aTLS.Conn, error) {
 	tlsConn, err := aTLS.ClientHandshake(ctx, conn, w.Config)
 	if err != nil {

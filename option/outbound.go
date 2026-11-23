@@ -28,6 +28,9 @@ type _Outbound struct {
 type Outbound _Outbound
 
 func (h *Outbound) MarshalJSONContext(ctx context.Context) ([]byte, error) {
+	if hasV2RayTransport(h.Type) {
+		return marshalRawOptions(ctx, (*_Outbound)(h), h.Options)
+	}
 	return badjson.MarshallObjectsContext(ctx, (*_Outbound)(h), h.Options)
 }
 
@@ -48,7 +51,11 @@ func (h *Outbound) UnmarshalJSONContext(ctx context.Context, content []byte) err
 	if !loaded {
 		return E.New("unknown outbound type: ", h.Type)
 	}
-	err = badjson.UnmarshallExcludedContext(ctx, content, (*_Outbound)(h), options)
+	if hasV2RayTransport(h.Type) {
+		err = unmarshalRawOptions(ctx, content, options, "type", "tag")
+	} else {
+		err = badjson.UnmarshallExcludedContext(ctx, content, (*_Outbound)(h), options)
+	}
 	if err != nil {
 		return err
 	}
