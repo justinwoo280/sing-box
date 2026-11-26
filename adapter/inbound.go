@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/sagernet/sing-box/common/interrupt"
 	"github.com/sagernet/sing-box/common/tlsspoof"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -40,7 +41,6 @@ type InboundManager interface {
 	Lifecycle
 	Inbounds() []Inbound
 	Get(tag string) (Inbound, bool)
-	Remove(tag string) error
 	Create(ctx context.Context, router Router, logger log.ContextLogger, tag string, inboundType string, options any) error
 }
 
@@ -58,15 +58,17 @@ type InboundContext struct {
 
 	RouteRule     string
 	RouteOutbound string
+	OutboundChain []Outbound
 
 	// sniffer
 
-	Protocol     string
-	Domain       string
-	Client       string
-	SniffContext any
-	SnifferNames []string
-	SniffError   error
+	Protocol      string
+	Domain        string
+	ECHPublicName string
+	Client        string
+	SniffContext  any
+	SnifferNames  []string
+	SniffError    error
 
 	// cache
 
@@ -140,34 +142,39 @@ func DNSResponseAddresses(response *dns.Msg) []netip.Addr {
 		return nil
 	}
 	addresses := make([]netip.Addr, 0, len(response.Answer))
-	for _, rawRecord := range response.Answer {
-		switch record := rawRecord.(type) {
-		case *dns.A:
-			addr := M.AddrFromIP(record.A)
-			if addr.IsValid() {
-				addresses = append(addresses, addr)
-			}
-		case *dns.AAAA:
-			addr := M.AddrFromIP(record.AAAA)
-			if addr.IsValid() {
-				addresses = append(addresses, addr)
-			}
-		case *dns.HTTPS:
-			for _, value := range record.SVCB.Value {
-				switch hint := value.(type) {
-				case *dns.SVCBIPv4Hint:
-					for _, ip := range hint.Hint {
-						addr := M.AddrFromIP(ip).Unmap()
-						if addr.IsValid() {
-							addresses = append(addresses, addr)
-						}
+	for _, record := range response.Answer {
+		addresses = AppendDNSRecordAddresses(addresses, record)
+	}
+	return addresses
+}
+
+func AppendDNSRecordAddresses(addresses []netip.Addr, rawRecord dns.RR) []netip.Addr {
+	switch record := rawRecord.(type) {
+	case *dns.A:
+		addr := M.AddrFromIP(record.A)
+		if addr.IsValid() {
+			addresses = append(addresses, addr)
+		}
+	case *dns.AAAA:
+		addr := M.AddrFromIP(record.AAAA)
+		if addr.IsValid() {
+			addresses = append(addresses, addr)
+		}
+	case *dns.HTTPS:
+		for _, value := range record.SVCB.Value {
+			switch hint := value.(type) {
+			case *dns.SVCBIPv4Hint:
+				for _, ip := range hint.Hint {
+					addr := M.AddrFromIP(ip).Unmap()
+					if addr.IsValid() {
+						addresses = append(addresses, addr)
 					}
-				case *dns.SVCBIPv6Hint:
-					for _, ip := range hint.Hint {
-						addr := M.AddrFromIP(ip)
-						if addr.IsValid() {
-							addresses = append(addresses, addr)
-						}
+				}
+			case *dns.SVCBIPv6Hint:
+				for _, ip := range hint.Hint {
+					addr := M.AddrFromIP(ip)
+					if addr.IsValid() {
+						addresses = append(addresses, addr)
 					}
 				}
 			}
@@ -187,6 +194,17 @@ func ContextWithDNSTransportTag(ctx context.Context, transportTag string) contex
 func DNSTransportTagFromContext(ctx context.Context) (string, bool) {
 	transportTag, loaded := ctx.Value((*dnsTransportTagKey)(nil)).(string)
 	return transportTag, loaded
+}
+
+func ContextForMultiplexSession(ctx context.Context) context.Context {
+	var sessionContext InboundContext
+	metadata := ContextFrom(ctx)
+	if metadata != nil {
+		sessionContext.Outbound = metadata.Outbound
+	}
+	ctx = ContextWithDNSTransportTag(ctx, "")
+	ctx = interrupt.ContextWithIsExternalConnection(ctx, false)
+	return WithContext(ctx, &sessionContext)
 }
 
 func WithContext(ctx context.Context, inboundContext *InboundContext) context.Context {

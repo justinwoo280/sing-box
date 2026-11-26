@@ -22,7 +22,10 @@ import (
 	mDNS "github.com/miekg/dns"
 )
 
-var _ adapter.DNSTransport = (*UDPTransport)(nil)
+var (
+	_ adapter.DNSTransport         = (*UDPTransport)(nil)
+	_ adapter.IdleConnectionKeeper = (*UDPTransport)(nil)
+)
 
 func RegisterUDP(registry *dns.TransportRegistry) {
 	dns.RegisterTransport[option.RemoteDNSServerOptions](registry, C.DNSTypeUDP, NewUDP)
@@ -76,19 +79,24 @@ func NewUDPRaw(logger logger.ContextLogger, adapter dns.TransportAdapter, dialer
 	return t
 }
 
-func (t *UDPTransport) Start(stage adapter.StartStage) error {
+func (t *UDPTransport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
+	scope.Add(t.multiplexer.Close)
 	return dialer.InitializeDetour(t.dialer)
-}
-
-func (t *UDPTransport) Close() error {
-	return t.multiplexer.Close()
 }
 
 func (t *UDPTransport) Reset() {
 	t.multiplexer.Reset()
+}
+
+func (t *UDPTransport) SetKeepIdleConnections(keep bool) {
+	t.multiplexer.SetKeepIdleConnections(keep)
+}
+
+func (t *UDPTransport) CloseIdleConnections() {
+	t.multiplexer.CloseIdleConnections()
 }
 
 func (t *UDPTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
@@ -139,7 +147,7 @@ func (t *UDPTransport) updateUDPSize(message *mDNS.Msg) {
 func (t *UDPTransport) writeQuery(conn net.Conn, message *mDNS.Msg, queryId uint16) error {
 	buffer := buf.NewSize(1 + message.Len())
 	defer buffer.Release()
-	exMessage := *message
+	exMessage := message.Copy()
 	exMessage.Compress = true
 	exMessage.Id = queryId
 	rawMessage, err := exMessage.PackBuffer(buffer.FreeBytes())

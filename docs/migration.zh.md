@@ -4,6 +4,28 @@ icon: material/arrange-bring-forward
 
 ## 1.14.0
 
+### 迁移 macOS standalone 客户端数据
+
+Apple 平台客户端已迁移至新的 Apple 开发者账户，因此 macOS standalone 客户端是一个新应用，
+配置文件与设置不会被继承。
+
+在启动 sing-box 1.14.0-rc.2 或更高版本之前，可使用以下命令迁移：
+
+```bash
+mv ~/Library/Group\ Containers/287TTNZF8L.io.nekohasekai.sfavt \
+  ~/Library/Group\ Containers/P8XK3KHB48.io.nekohasekai.sfamt
+xattr -c ~/Library/Group\ Containers/P8XK3KHB48.io.nekohasekai.sfamt
+rm ~/Library/Group\ Containers/P8XK3KHB48.io.nekohasekai.sfamt/.com.apple.containermanagerd.metadata.plist
+```
+
+如果您已使用此命令的早期版本迁移，且启动时出现权限弹窗，请执行以下命令并重新启动应用：
+
+```bash
+xattr -c ~/Library/Group\ Containers/P8XK3KHB48.io.nekohasekai.sfamt
+rm ~/Library/Group\ Containers/P8XK3KHB48.io.nekohasekai.sfamt/.com.apple.containermanagerd.metadata.plist
+tccutil reset All io.nekohasekai.sfamt.standalone
+```
+
 ### 迁移内联 ACME 到证书提供者
 
 TLS 中的内联 ACME 选项已废弃，且可以被证书提供者替代。
@@ -82,7 +104,8 @@ sing-box 1.14.0 新增字段参阅 [ACME](/zh/configuration/shared/certificate-p
 ### 迁移地址筛选字段到响应匹配
 
 旧版地址筛选字段（不使用 `match_response` 的 `ip_cidr`、`ip_is_private`）已废弃，
-旧版 `rule_set_ip_cidr_accept_empty` DNS 规则项也已废弃。当旧版 DNS 模式被禁用时，
+旧版 `rule_set_ip_cidr_accept_empty` DNS 规则项也已废弃。当 DNS 规则使用了 sing-box 1.14.0
+新增的功能（例如 `evaluate`、`match_response` 或 `ip_version`）时，
 引用仅包含 `ip_cidr` 项的规则集（例如 GeoIP 规则集）且未设置 `match_response` 的 DNS 规则
 也将在启动时被拒绝。
 
@@ -141,8 +164,7 @@ sing-box 1.14.0 新增字段参阅 [ACME](/zh/configuration/shared/certificate-p
 
 ### 迁移 independent DNS cache
 
-DNS 缓存现在始终按传输名称分离，使 `independent_cache` 不再需要。
-直接移除该字段即可。
+`independent_cache` 已废弃，直接移除该字段即可。
 
 !!! info "参考"
 
@@ -209,24 +231,8 @@ DNS 缓存现在始终按传输名称分离，使 `independent_cache` 不再需�
 [`query_type`](/zh/configuration/rule-set/headless-rule/#query_type)，
 行为有两项更改。
 
-其一，这些字段现在对每一次 DNS 规则评估都会生效。此前它们仅对来自客户端的 DNS 查询
-（例如来自 DNS 入站或被 `tun` 截获的查询）生效，当 DNS 规则被未指定具体 DNS 服务器的
-内部域名解析匹配时，会被静默忽略。此类内部解析包括：
-
-- 未设置 `server` 的 [`resolve`](/zh/configuration/route/rule_action/#resolve) 路由规则动作。
-- 通过 `direct` 出站路由到域名目标的 ICMP 流量。
-- 作为出站使用的 [WireGuard](/zh/configuration/endpoint/wireguard/) 或
-  [Tailscale](/zh/configuration/endpoint/tailscale/) 端点在解析自身目标地址时。
-- [SOCKS4](/zh/configuration/outbound/socks/) 出站，因为协议本身不支持域名，
-  必须在本地解析目标。
-- [DERP](/zh/configuration/service/derp/) 的 `bootstrap-dns` 端点，以及
-  [`resolved`](/zh/configuration/service/resolved/) 服务在解析主机名或 SRV 目标时。
-
-通过拨号字段中的
-[`domain_resolver`](/zh/configuration/shared/dial/#domain_resolver)、
-路由选项中的 [`default_domain_resolver`](/zh/configuration/route/#default_domain_resolver)，
-或 DNS 规则动作与 `resolve` 路由规则动作上显式的 `server` 指定具体 DNS 服务器的
-解析，不会经过 DNS 规则匹配，不受此次更改影响。
+其一，当 DNS 规则被未指定具体 DNS 服务器的内部域名解析匹配时，这些字段现在也会生效，
+例如未设置 `server` 的 [`resolve`](/zh/configuration/route/rule_action/#resolve) 路由规则动作。
 
 其二，设置了 `ip_version` 或 `query_type` 的 DNS 规则，或引用了包含 `query_type` 的
 规则集的 DNS 规则，在同一 DNS 配置中不再能与旧版地址筛选字段 (DNS 规则)、旧版
@@ -534,7 +540,7 @@ DNS 服务器已经重构。
             "fakeip": {
               "enabled": true,
               "inet4_range": "198.18.0.0/15",
-              "inet6_range": "fc00::/18"
+              "inet6_range": "2001:2::/48"
             }
           }
         }
@@ -554,7 +560,7 @@ DNS 服务器已经重构。
                 "type": "fakeip",
                 "tag": "fakeip",
                 "inet4_range": "198.18.0.0/15",
-                "inet6_range": "fc00::/18"
+                "inet6_range": "2001:2::/48"
               }
             ],
             "rules": [

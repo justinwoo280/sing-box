@@ -89,7 +89,11 @@ func TestBrowserInterop(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer store.Close()
+				scope := adapter.NewScope(ctx, logger.NOP())
+				defer scope.Close()
+				if err := scope.Start("certificate", store, adapter.StartStateInitialize); err != nil {
+					t.Fatal(err)
+				}
 				ctx = service.ContextWith[adapter.CertificateStore](ctx, store)
 				key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 				if err != nil {
@@ -159,6 +163,7 @@ func TestBrowserInterop(t *testing.T) {
 					}
 					tlsOptions.ECH = &option.OutboundECHOptions{Enabled: true}
 					if echMode == "dns" {
+						ctx = service.ContextWith[adapter.DNSTransportManager](ctx, loopbackDNSManager{})
 						configBlock, _ := pem.Decode([]byte(configPEM))
 						tlsOptions.ECH.QueryServerName = "ech-query.test"
 						ctx = service.ContextWith[adapter.DNSRouter](ctx, &browserDNSRouter{exchange: func(_ context.Context, request *mDNS.Msg, _ adapter.DNSQueryOptions) (*mDNS.Msg, error) {
@@ -185,7 +190,10 @@ func TestBrowserInterop(t *testing.T) {
 				if stream.proxy {
 					endpoint, proxyUploads, proxyDownloads = browserGRPCProxy(t, httpServer)
 				}
-				tlsConfig, err := tls.NewClient(ctx, logger.NOP(), "browser.test", tlsOptions)
+				tlsConfig, err := tls.NewClientWithOptions(tls.ClientOptions{
+					Context: ctx, Logger: logger.NOP(), ServerAddress: "browser.test", Options: tlsOptions,
+					DomainResolver: &option.DomainResolveOptions{Server: "loopback"},
+				})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -247,7 +255,11 @@ func TestBrowserSystemStoreRejectsUntrustedCertificate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer store.Close()
+			scope := adapter.NewScope(ctx, logger.NOP())
+			defer scope.Close()
+			if err := scope.Start("certificate", store, adapter.StartStateInitialize); err != nil {
+				t.Fatal(err)
+			}
 			ctx = service.ContextWith[adapter.CertificateStore](ctx, store)
 			var requests atomic.Int32
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

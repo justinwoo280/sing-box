@@ -4,24 +4,19 @@ package oomkiller
 
 import (
 	"github.com/sagernet/sing-box/adapter"
-	E "github.com/sagernet/sing/common/exceptions"
 )
 
-func (s *Service) Start(stage adapter.StartStage) error {
+func (s *Service) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
-	if !s.timerConfig.policyMode.hasTimerMode() {
-		return E.New("memory pressure monitoring is not available on this platform without memory_limit")
+	err := s.startTimer()
+	if err != nil {
+		return err
 	}
-	s.adaptiveTimer = newAdaptiveTimer(s.logger, s.network, s.timerConfig, s.writeOOMReport)
-	s.adaptiveTimer.start()
-	return nil
-}
-
-func (s *Service) Close() error {
-	if s.adaptiveTimer != nil {
-		s.adaptiveTimer.stop()
-	}
+	scope.Add(func() error {
+		s.stopTimer()
+		return nil
+	})
 	return nil
 }

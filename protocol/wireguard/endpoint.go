@@ -29,6 +29,7 @@ import (
 var (
 	_ adapter.OutboundWithPreferredRoutes = (*Endpoint)(nil)
 	_ adapter.InterfaceUpdateListener     = (*Endpoint)(nil)
+	_ adapter.OutboundWithMultiplex       = (*Endpoint)(nil)
 	_ dialer.PacketDialerWithDestination  = (*Endpoint)(nil)
 )
 
@@ -133,8 +134,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	return ep, nil
 }
 
-func (w *Endpoint) Start(stage adapter.StartStage) error {
+func (w *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	switch stage {
+	case adapter.StartStateInitialize:
+		scope.Add(w.endpoint.Close)
 	case adapter.StartStateStart:
 		return w.endpoint.Start(false)
 	case adapter.StartStatePostStart:
@@ -143,15 +146,18 @@ func (w *Endpoint) Start(stage adapter.StartStage) error {
 			return err
 		}
 		w.started.Store(true)
+		scope.Add(func() error {
+			w.bindAccess.Lock()
+			w.started.Store(false)
+			w.bindAccess.Unlock()
+			return nil
+		})
 	}
 	return nil
 }
 
-func (w *Endpoint) Close() error {
-	w.bindAccess.Lock()
-	w.started.Store(false)
-	w.bindAccess.Unlock()
-	return w.endpoint.Close()
+func (w *Endpoint) MultiplexEnabled() bool {
+	return true
 }
 
 func (w *Endpoint) InterfaceUpdated(ctx context.Context) {
@@ -195,7 +201,7 @@ func (w *Endpoint) DetachReturn(returnPath tun.Return) error {
 
 func (w *Endpoint) JudgeFlow(network uint8, source netip.AddrPort, destination netip.AddrPort, firstPacket []byte) tun.FlowVerdict {
 	for _, localPrefix := range w.localAddresses {
-		if localPrefix.Contains(destination.Addr()) {
+		if destination.Addr() == localPrefix.Addr() {
 			return tun.FlowVerdict{Action: tun.ActionAccept}
 		}
 	}
@@ -228,7 +234,7 @@ func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.
 	metadata.InboundType = w.Type()
 	metadata.Source = source
 	for _, localPrefix := range w.localAddresses {
-		if localPrefix.Contains(destination.Addr) {
+		if destination.Addr == localPrefix.Addr() {
 			metadata.OriginDestination = destination
 			if destination.Addr.Is4() {
 				destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
@@ -251,7 +257,7 @@ func (w *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	metadata.Source = source
 	metadata.Destination = destination
 	for _, localPrefix := range w.localAddresses {
-		if localPrefix.Contains(destination.Addr) {
+		if destination.Addr == localPrefix.Addr() {
 			metadata.OriginDestination = destination
 			if destination.Addr.Is4() {
 				metadata.Destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})

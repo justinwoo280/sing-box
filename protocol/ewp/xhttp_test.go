@@ -116,9 +116,11 @@ func startEWPXHTTPTestInbound(t *testing.T, ctx context.Context, transport, tls 
 	router := &ewpXHTTPTestRouter{metadata: make(chan adapter.InboundContext, 4)}
 	inbound, err := NewInbound(ctx, router, logger.NOP(), "ewp-in", options)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = inbound.Close() })
 	server := inbound.(*Inbound)
-	require.NoError(t, server.Start(adapter.StartStateStart))
+	scope := adapter.NewScope(ctx, logger.NOP())
+	t.Cleanup(func() { _ = scope.Close() })
+	require.NoError(t, server.Start(adapter.StartStateInitialize, scope))
+	require.NoError(t, server.Start(adapter.StartStateStart, scope))
 	if listener := server.listener.TCPListener(); listener != nil {
 		return M.SocksaddrFromNet(listener.Addr()), publicKey, router
 	}

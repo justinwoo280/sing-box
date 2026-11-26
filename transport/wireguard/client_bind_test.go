@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -27,15 +26,17 @@ func (d blockedBindDialer) DialContext(ctx context.Context, _ string, _ M.Socksa
 	return nil, ctx.Err()
 }
 
-func (blockedBindDialer) ListenPacket(context.Context, M.Socksaddr) (net.PacketConn, error) {
-	return nil, net.ErrClosed
+func (d blockedBindDialer) ListenPacket(ctx context.Context, _ M.Socksaddr) (net.PacketConn, error) {
+	close(d.started)
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func TestClientBindCloseCancelsConnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dialer := blockedBindDialer{started: make(chan struct{})}
-	bind := NewClientBind(ctx, nil, dialer, true, netip.MustParseAddrPort("127.0.0.1:1234"), [3]byte{})
+	bind := NewClientBind(ctx, nil, dialer, M.ParseSocksaddr("127.0.0.1:1234"), [3]byte{})
 	bind.Open(0)
 	done := make(chan error, 1)
 	go func() { _, err := bind.connect(); done <- err }()
@@ -56,7 +57,7 @@ func TestClientBindCloseCancelsConnect(t *testing.T) {
 }
 
 func TestClientBindConcurrentClose(t *testing.T) {
-	bind := NewClientBind(context.Background(), nil, bindTestDialer{}, false, netip.AddrPort{}, [3]byte{})
+	bind := NewClientBind(context.Background(), nil, bindTestDialer{}, M.Socksaddr{}, [3]byte{})
 	for range 32 {
 		bind.Open(0)
 		var group sync.WaitGroup
@@ -68,7 +69,7 @@ func TestClientBindConcurrentClose(t *testing.T) {
 }
 
 func TestClientBindReceiveDoesNotCrossReopen(t *testing.T) {
-	bind := NewClientBind(context.Background(), nil, bindTestDialer{}, false, netip.AddrPort{}, [3]byte{})
+	bind := NewClientBind(context.Background(), nil, bindTestDialer{}, M.Socksaddr{}, [3]byte{})
 	receive, _, err := bind.Open(0)
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +101,7 @@ func (bindTestDialer) ListenPacket(context.Context, M.Socksaddr) (net.PacketConn
 }
 
 func TestClientBindConcurrentConnect(t *testing.T) {
-	bind := NewClientBind(context.Background(), nil, bindTestDialer{}, false, netip.AddrPort{}, [3]byte{})
+	bind := NewClientBind(context.Background(), nil, bindTestDialer{}, M.Socksaddr{}, [3]byte{})
 	if _, _, err := bind.Open(0); err != nil {
 		t.Fatal(err)
 	}

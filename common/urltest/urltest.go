@@ -3,6 +3,7 @@ package urltest
 import (
 	"context"
 	"crypto/tls"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-mux"
+	"github.com/sagernet/sing-snell"
 	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -65,6 +68,15 @@ func (s *HistoryStorage) StoreURLTestHistory(tag string, history *adapter.URLTes
 	s.access.Unlock()
 }
 
+func (s *HistoryStorage) UpdateURLTestHistory(stored map[string]*adapter.URLTestHistory, deleted []string) {
+	s.access.Lock()
+	defer s.access.Unlock()
+	for _, tag := range deleted {
+		delete(s.delayHistory, tag)
+	}
+	maps.Copy(s.delayHistory, stored)
+}
+
 func (s *HistoryStorage) notifyUpdated() {
 	for _, updateHook := range s.updateHooks {
 		updateHook.Emit(struct{}{})
@@ -81,7 +93,11 @@ func (s *HistoryStorage) Close() error {
 func URLTest(ctx context.Context, link string, detour N.Dialer) (uint16, error) {
 	multiplexOutbound, isMultiplexOutbound := common.Cast[adapter.OutboundWithMultiplex](detour)
 	if isMultiplexOutbound && multiplexOutbound.MultiplexEnabled() {
-		_, err := urlTest(ctx, link, detour)
+		warmContext := adapter.ContextWithKeepSession(ctx)
+		warmContext = mux.ContextWithKeepSession(warmContext)
+		warmContext = contextWithQUICKeepSession(warmContext)
+		warmContext = snell.ContextWithKeepSession(warmContext)
+		_, err := urlTest(warmContext, link, detour)
 		if err != nil {
 			return 0, err
 		}

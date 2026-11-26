@@ -12,6 +12,7 @@ type Endpoint interface {
 	Type() string
 	Tag() string
 	Outbound
+	IsEndpoint()
 }
 
 type EndpointRegistry interface {
@@ -21,8 +22,8 @@ type EndpointRegistry interface {
 
 type EndpointManager interface {
 	Lifecycle
+	StartEndpoint(endpoint Endpoint) error
 	Endpoints() []Endpoint
 	Get(tag string) (Endpoint, bool)
-	Remove(tag string) error
 	Create(ctx context.Context, router Router, logger log.ContextLogger, tag string, endpointType string, options any) error
 }

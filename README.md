@@ -8,6 +8,10 @@ The universal proxy platform.
 
 https://sing-box.sagernet.org
 
+This fork's `1.14.x` baseline is upstream `stable@8dbc70be`, a maintenance
+snapshot after `v1.14.4`. See [integration notes](release/UPSTREAM_1.14.md)
+for dependency pins and the Browser/native compatibility boundary.
+
 ## Browser XHTTP
 
 Desktop Browser XHTTP support and the required Cronet native libraries are

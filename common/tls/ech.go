@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/pem"
 	"net"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -25,7 +26,7 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-func parseECHClientConfig(ctx context.Context, clientConfig ECHCapableConfig, options option.OutboundTLSOptions) (Config, error) {
+func parseECHClientConfig(ctx context.Context, clientConfig ECHCapableConfig, options option.OutboundTLSOptions, domainResolver *option.DomainResolveOptions, directResolver bool) (Config, error) {
 	var echConfig []byte
 	if len(options.ECH.Config) > 0 {
 		echConfig = []byte(strings.Join(options.ECH.Config, "\n"))
@@ -48,10 +49,18 @@ func parseECHClientConfig(ctx context.Context, clientConfig ECHCapableConfig, op
 		clientConfig.SetECHConfigList(block.Bytes)
 		return clientConfig, nil
 	} else {
+		if directResolver && (domainResolver == nil || domainResolver.Server == "") {
+			return nil, E.New("missing domain resolver for ECH config query")
+		}
 		return &ECHClientConfig{
 			ECHCapableConfig: clientConfig,
+			ctx:              ctx,
 			dnsRouter:        service.FromContext[adapter.DNSRouter](ctx),
+			domainResolver:   domainResolver,
 			queryServerName:  options.ECH.QueryServerName,
+			state: &echClientState{
+				entries: make(map[string]echClientEntry),
+			},
 		}, nil
 	}
 }
@@ -107,17 +116,31 @@ func parseECHKeys(echKey []byte) ([]tls.EncryptedClientHelloKey, error) {
 	return echKeys, nil
 }
 
+type echClientState struct {
+	access  sync.Mutex
+	entries map[string]echClientEntry
+}
+
+type echClientEntry struct {
+	configList []byte
+	expireAt   time.Time
+}
+
 type ECHClientConfig struct {
 	ECHCapableConfig
-	access          sync.Mutex
+	ctx             context.Context
 	dnsRouter       adapter.DNSRouter
+	domainResolver  *option.DomainResolveOptions
 	queryServerName string
-	lastTTL         time.Duration
-	lastUpdate      time.Time
+	state           *echClientState
 }
 
 func (s *ECHClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) (aTLS.Conn, error) {
-	tlsConn, err := s.fetchAndHandshake(ctx, conn)
+	tlsConfig, err := s.handshakeConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tlsConn, err := tlsConfig.Client(conn)
 	if err != nil {
 		return nil, err
 	}
@@ -128,75 +151,123 @@ func (s *ECHClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) (a
 	return tlsConn, nil
 }
 
-func (s *ECHClientConfig) fetchAndHandshake(ctx context.Context, conn net.Conn) (aTLS.Conn, error) {
-	s.access.Lock()
-	defer s.access.Unlock()
-	if err := s.fetchConfig(ctx); err != nil {
+func (s *ECHClientConfig) handshakeConfig(ctx context.Context) (ECHCapableConfig, error) {
+	echConfigList, err := s.loadECHConfigList(ctx)
+	if err != nil {
 		return nil, err
 	}
-	return s.Client(conn)
+	tlsConfig := s.ECHCapableConfig.Clone().(ECHCapableConfig)
+	tlsConfig.SetECHConfigList(echConfigList)
+	return tlsConfig, nil
 }
 
-// fetchConfig requires access to be held. It is shared by Go TLS and native
-// Browser TLS so query_server_name, DNS routing and TTL handling stay identical.
-func (s *ECHClientConfig) fetchConfig(ctx context.Context) error {
-	if len(s.ECHConfigList()) == 0 || s.lastTTL == 0 || time.Since(s.lastUpdate) > s.lastTTL {
-		if s.dnsRouter == nil {
-			return E.New("fetch ECH config list: missing DNS router")
+func (s *ECHClientConfig) echQueryServerName() string {
+	if s.queryServerName != "" {
+		return s.queryServerName
+	}
+	return s.ServerName()
+}
+
+func (s *ECHClientConfig) loadECHConfigList(ctx context.Context) ([]byte, error) {
+	if s.dnsRouter == nil {
+		return nil, E.New("fetch ECH config list: missing DNS router")
+	}
+	queryServerName := s.echQueryServerName()
+	s.state.access.Lock()
+	cachedEntry := s.state.entries[queryServerName]
+	s.state.access.Unlock()
+	if time.Now().Before(cachedEntry.expireAt) {
+		return cachedEntry.configList, nil
+	}
+	queryOptions, err := dialer.NewDNSQueryOptions(s.ctx, s.domainResolver, true)
+	if err != nil {
+		if s.domainResolver == nil || s.domainResolver.Server == "" {
+			return nil, E.Cause(err, "fetch ECH config list for ", queryServerName, ": ECH config query requires `domain_resolver` or `route.default_domain_resolver`")
 		}
-		queryServerName := s.queryServerName
-		if queryServerName == "" {
-			queryServerName = s.ServerName()
-		}
-		message := &mDNS.Msg{
-			MsgHdr: mDNS.MsgHdr{
-				RecursionDesired: true,
+		return nil, E.Cause(err, "fetch ECH config list for ", queryServerName)
+	}
+	message := &mDNS.Msg{
+		MsgHdr: mDNS.MsgHdr{
+			RecursionDesired: true,
+		},
+		Question: []mDNS.Question{
+			{
+				Name:   mDNS.Fqdn(queryServerName),
+				Qtype:  mDNS.TypeHTTPS,
+				Qclass: mDNS.ClassINET,
 			},
-			Question: []mDNS.Question{
-				{
-					Name:   mDNS.Fqdn(queryServerName),
-					Qtype:  mDNS.TypeHTTPS,
-					Qclass: mDNS.ClassINET,
-				},
-			},
+		},
+	}
+	response, err := s.dnsRouter.Exchange(ctx, message, queryOptions)
+	if err != nil {
+		return nil, E.Cause(err, "fetch ECH config list for ", queryServerName)
+	}
+	if response.Rcode != mDNS.RcodeSuccess {
+		return nil, E.Cause(dns.RcodeError(response.Rcode), "fetch ECH config list for ", queryServerName)
+	}
+	var (
+		echConfigList []byte
+		timeToLive    time.Duration
+	)
+match:
+	for _, rr := range response.Answer {
+		record, isHTTPS := rr.(*mDNS.HTTPS)
+		if !isHTTPS {
+			continue
 		}
-		response, err := s.dnsRouter.Exchange(ctx, message, adapter.DNSQueryOptions{})
-		if err != nil {
-			return E.Cause(err, "fetch ECH config list")
-		}
-		if response.Rcode != mDNS.RcodeSuccess {
-			return E.Cause(dns.RcodeError(response.Rcode), "fetch ECH config list")
-		}
-		var found bool
-	match:
-		for _, rr := range response.Answer {
-			switch resource := rr.(type) {
-			case *mDNS.HTTPS:
-				for _, value := range resource.Value {
-					if value.Key().String() == "ech" {
-						echConfigList, err := base64.StdEncoding.DecodeString(value.String())
-						if err != nil {
-							return E.Cause(err, "decode ECH config")
-						}
-						s.lastTTL = time.Duration(rr.Header().Ttl) * time.Second
-						s.lastUpdate = time.Now()
-						s.SetECHConfigList(echConfigList)
-						found = len(echConfigList) > 0
-						break match
-					}
-				}
+		for _, value := range record.Value {
+			echConfig, isECHConfig := value.(*mDNS.SVCBECHConfig)
+			if isECHConfig && len(echConfig.ECH) > 0 {
+				echConfigList = echConfig.ECH
+				timeToLive = time.Duration(rr.Header().Ttl) * time.Second
+				break match
 			}
 		}
-		if !found {
-			return E.New("no ECH config found in DNS records")
-		}
 	}
-	return nil
+	if len(echConfigList) == 0 {
+		return nil, E.New("no ECH config found in DNS records for ", queryServerName)
+	}
+	s.state.access.Lock()
+	defer s.state.access.Unlock()
+	currentEntry := s.state.entries[queryServerName]
+	if currentEntry.expireAt.Equal(cachedEntry.expireAt) {
+		currentEntry = echClientEntry{
+			configList: echConfigList,
+			expireAt:   time.Now().Add(timeToLive),
+		}
+		s.state.entries[queryServerName] = currentEntry
+	}
+	return currentEntry.configList, nil
+}
+
+func (s *ECHClientConfig) ECHConfigList() []byte {
+	s.state.access.Lock()
+	defer s.state.access.Unlock()
+	return s.state.entries[s.echQueryServerName()].configList
+}
+
+func (s *ECHClientConfig) SetECHConfigList(echConfigList []byte) {
+	queryServerName := s.echQueryServerName()
+	s.state.access.Lock()
+	defer s.state.access.Unlock()
+	s.state.entries[queryServerName] = echClientEntry{
+		configList: echConfigList,
+		expireAt:   time.Now().Add(C.DefaultDNSTTL * time.Second),
+	}
+}
+
+func (s *ECHClientConfig) Clone() Config {
+	return &ECHClientConfig{
+		ECHCapableConfig: s.ECHCapableConfig.Clone().(ECHCapableConfig),
+		ctx:              s.ctx,
+		dnsRouter:        s.dnsRouter,
+		domainResolver:   s.domainResolver,
+		queryServerName:  s.queryServerName,
+		state:            s.state,
+	}
 }
 
 func (s *ECHClientConfig) BrowserTLSConfig() (BrowserTLSOptions, error) {
-	s.access.Lock()
-	defer s.access.Unlock()
 	exporter, ok := s.ECHCapableConfig.(interface {
 		BrowserTLSConfig() (BrowserTLSOptions, error)
 	})
@@ -212,26 +283,10 @@ func (s *ECHClientConfig) BrowserTLSConfig() (BrowserTLSOptions, error) {
 	}
 	options.ECHConfigList = nil
 	options.GetECHConfigList = func(ctx context.Context) ([]byte, error) {
-		s.access.Lock()
-		defer s.access.Unlock()
-		if err := s.fetchConfig(ctx); err != nil {
-			return nil, err
-		}
-		return bytes.Clone(s.ECHConfigList()), nil
+		config, err := s.loadECHConfigList(ctx)
+		return bytes.Clone(config), err
 	}
 	return options, nil
-}
-
-func (s *ECHClientConfig) Clone() Config {
-	s.access.Lock()
-	defer s.access.Unlock()
-	return &ECHClientConfig{
-		ECHCapableConfig: s.ECHCapableConfig.Clone().(ECHCapableConfig),
-		dnsRouter:        s.dnsRouter,
-		queryServerName:  s.queryServerName,
-		lastTTL:          s.lastTTL,
-		lastUpdate:       s.lastUpdate,
-	}
 }
 
 func UnmarshalECHKeys(raw []byte) ([]tls.EncryptedClientHelloKey, error) {

@@ -89,7 +89,9 @@ func TestBrowserRealityVLESS(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer inbound.Close()
+			scope := adapter.NewScope(ctx, logger.NOP())
+			defer scope.Close()
+			scope.Add(inbound.(*Inbound).transport.Close)
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
@@ -111,7 +113,9 @@ func TestBrowserRealityVLESS(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer outbound.(*Outbound).Close()
+			if err := outbound.(*Outbound).Start(adapter.StartStateInitialize, scope); err != nil {
+				t.Fatal(err)
+			}
 			destination := M.ParseSocksaddr("destination.test:443")
 			conn, err := outbound.DialContext(ctx, N.NetworkTCP, destination)
 			if err != nil {

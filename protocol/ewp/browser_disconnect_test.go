@@ -50,7 +50,7 @@ func TestEWPBrowserProxyDisconnect(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer inbound.Close()
+				defer inbound.(*Inbound).Close()
 				backend := httptest.NewUnstartedServer(inbound.(*Inbound).transport.(http.Handler))
 				backend.EnableHTTP2 = true
 				backend.TLS = &stdTLS.Config{Certificates: []stdTLS.Certificate{certificate}}

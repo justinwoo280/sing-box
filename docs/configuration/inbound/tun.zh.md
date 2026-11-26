@@ -88,9 +88,9 @@ icon: material/new-box
   "iproute2_table_index": 2022,
   "iproute2_rule_index": 9000,
   "auto_redirect": true,
-  "auto_redirect_input_mark": "0x2023",
-  "auto_redirect_output_mark": "0x2024",
-  "auto_redirect_reset_mark": "0x2025",
+  "auto_redirect_input_mark": "0x04000000",
+  "auto_redirect_output_mark": "0x08000000",
+  "auto_redirect_reset_mark": "0x10000000",
   "auto_redirect_nfqueue": 100,
   "auto_redirect_iproute2_fallback_rule_index": 32768,
   "exclude_mptcp": false,
@@ -185,9 +185,7 @@ icon: material/new-box
   ],
   "inet6_route_exclude_address": [
     "fc00::/7"
-  ],
-  
-  ... // 监听字段
+  ]
 }
 ```
 
@@ -259,21 +257,19 @@ TUN 接口上 DNS 的处理方式。
 |------------|-------------------------------------------------------------------------------------------------------|
 | `disabled` | 不设置原生 DNS，也不劫持 DNS 流量。                                                                    |
 | `native`   | 尽可能设置平台的原生接口 DNS：Windows 与 Apple 上的接口 DNS，Linux 上的 `systemd-resolved` 接口 DNS。   |
-| `hijack`   | 与 `native` 相同，并额外执行下文所述的 53 端口劫持。默认使用。                                         |
+| `hijack`   | 与 `native` 相同，并额外执行下文所述的 53 端口劫持。                                                  |
+
+启用 [`auto_route`](#auto_route) 时默认使用 `hijack`，否则默认使用 `disabled`。
 
 `hijack` 在 `native` 之上额外执行：
 
-*Linux*：只能劫持发往非本机地址的 DNS。发往本机接口地址（如 `127.0.0.53`
-或本机 LAN 接口 IP）的流量由内核 `local` 路由表在所有用户规则之前直接交付，
-`OUTPUT` 链 NAT 也无法对走 `lo` 的包生效。
+*Linux*：发往本机接口地址（如 `127.0.0.53` 或本机 LAN 接口 IP）的 DNS 不会被劫持。
 
-- 未启用 `auto_redirect` 时：通过 `iproute2` 规则让 53 端口跳过 `main` 表的
-  具体路由查找，把本来会经直连子网直接送达的 DNS 改走 TUN —— 不重写目的地址。
-- 启用 `auto_redirect` 时：通过 nftables 规则将 53 端口流量直接 DNAT 至
+- 未启用 `auto_redirect` 时：发往直连子网的 53 端口流量也会经由 TUN 路由。
+- 启用 `auto_redirect` 时：53 端口流量被重定向至
   [`dns_address`](#dns_address)。
 
-*Windows 启用 [`strict_route`](#strict_route) 时*：通过 WFP 过滤器阻止经由非
-TUN 接口的 53 端口流量。
+*Windows 启用 [`strict_route`](#strict_route) 时*：阻止经由非 TUN 接口的 53 端口流量。
 
 #### dns_address
 
@@ -281,13 +277,11 @@ TUN 接口的 53 端口流量。
 
 [`dns_mode`](#dns_mode) 使用的 DNS 服务器地址列表。
 
-未设置时，sing-box 会按地址族在 [`address`](#address) 的第一个 IPv4/IPv6
-条目后面取下一个 IP 作为 DNS 服务器地址，并将流向这些推导地址的连接额外劫持到
-sing-box DNS 模块，等价于一条
-[`hijack-dns`](/zh/configuration/route/rule_action/#hijack-dns) 路由动作；这与此选项加入之前的行为一致。
+未设置时，使用 [`address`](#address) 中第一个 IPv4 和 IPv6 条目的下一个地址，
+发往该地址的连接按 [`hijack-dns`](/zh/configuration/route/rule_action/#hijack-dns) 路由动作处理。
 
-设置后，将不再自动劫持；如仍需此行为，请显式配置
-[`hijack-dns`](/zh/configuration/route/rule_action/#hijack-dns) 路由规则。
+设置后，请配置 [`hijack-dns`](/zh/configuration/route/rule_action/#hijack-dns)
+路由规则以处理发往这些地址的 DNS 流量。
 
 #### gso
 
@@ -360,7 +354,7 @@ sing-box DNS 模块，等价于一条
 
 `auto_redirect` 使用的连接输入标记。
 
-默认使用 `0x2023`。
+默认使用 `0x04000000`。
 
 #### auto_redirect_output_mark
 
@@ -368,7 +362,7 @@ sing-box DNS 模块，等价于一条
 
 `auto_redirect` 使用的连接输出标记。
 
-默认使用 `0x2024`。
+默认使用 `0x08000000`。
 
 #### auto_redirect_reset_mark
 
@@ -376,7 +370,7 @@ sing-box DNS 模块，等价于一条
 
 `auto_redirect` 预匹配使用的连接重置标记。
 
-默认使用 `0x2025`。
+默认使用 `0x10000000`。
 
 #### auto_redirect_nfqueue
 
@@ -504,8 +498,8 @@ sing-box DNS 模块，等价于一条
     将指定规则集中的目标 IP CIDR 规则添加到路由，相当于添加到 `route_address`。
     不匹配的流量将绕过 sing-box 路由。
 
-    请注意，由于 Android VpnService 无法处理大量路由（DeadSystemException），
-    因此它**在 Android 图形客户端上不起作用**，但除此之外，它在所有命令行客户端和 Apple 平台上都可以正常工作。
+    请注意，由于无法处理大量路由，它**在 Android 和 Apple 图形客户端上不起作用**，
+    但除此之外，它在所有命令行客户端以及 Linux 和 Windows 图形客户端上都可以正常工作。
 
 #### route_exclude_address_set
 
@@ -529,14 +523,14 @@ sing-box DNS 模块，等价于一条
     将指定规则集中的目标 IP CIDR 规则添加到路由，相当于添加到 `route_exclude_address`。
     匹配的流量将绕过 sing-box 路由。
 
-    请注意，由于 Android VpnService 无法处理大量路由（DeadSystemException），
-    因此它**在 Android 图形客户端上不起作用**，但除此之外，它在所有命令行客户端和 Apple 平台上都可以正常工作。
+    请注意，由于无法处理大量路由，它**在 Android 和 Apple 图形客户端上不起作用**，
+    但除此之外，它在所有命令行客户端以及 Linux 和 Windows 图形客户端上都可以正常工作。
 
 #### endpoint_independent_nat
 
-启用独立于端点的 NAT。
+此选项自 sing-box 1.11.0 起不再生效，可从配置中移除。
 
-性能可能会略有下降，所以不建议在不需要的时候开启。
+自 sing-box 1.14.0 起，可使用 [UDP NAT 字段](/zh/configuration/shared/udp-nat/)自定义映射和过滤行为。
 
 #### stack
 
@@ -691,7 +685,3 @@ TCP/IP 栈。
 ### UDP NAT 字段
 
 参阅 [UDP NAT 字段](/zh/configuration/shared/udp-nat/)。
-
-### 监听字段
-
-参阅 [监听字段](/zh/configuration/shared/listen/)。

@@ -73,16 +73,10 @@ func (r *abstractDefaultRule) matchInner(metadata *adapter.InboundContext) bool 
 			return false
 		}
 	}
-	var matched bool
 	if r.ruleSetItem != nil {
-		matched = r.ruleSetItem.matchWithOuterGroups(metadata, groups)
-	} else {
-		matched = groups.done()
+		return r.ruleSetItem.matchWithOuterGroups(metadata, groups)
 	}
-	if matched {
-		metadata.DeferredIPCIDRMatchGroups &^= uint8(groups.satisfied)
-	}
-	return matched
+	return groups.done()
 }
 
 func (r *abstractDefaultRule) evaluateForMerge(metadata *adapter.InboundContext) (ruleGroupMatch, bool) {
@@ -206,32 +200,32 @@ func (r *abstractLogicalRule) Match(metadata *adapter.InboundContext) bool {
 		matched        bool
 		deferredGroups uint8
 	)
+	snapshot := snapshotRuleMatch(metadata)
 	if r.mode == C.LogicalTypeAnd {
 		matched = true
 		for _, rule := range r.rules {
-			nestedMetadata := *metadata
-			nestedMetadata.ResetRuleCache()
-			if !rule.Match(&nestedMetadata) {
+			metadata.ResetRuleCache()
+			if !rule.Match(metadata) {
 				matched = false
 				deferredGroups = 0
 				break
 			}
-			deferredGroups |= nestedMetadata.DeferredIPCIDRMatchGroups
+			deferredGroups |= metadata.DeferredIPCIDRMatchGroups
 		}
 	} else {
 		for _, rule := range r.rules {
-			nestedMetadata := *metadata
-			nestedMetadata.ResetRuleCache()
-			if rule.Match(&nestedMetadata) {
+			metadata.ResetRuleCache()
+			if rule.Match(metadata) {
 				matched = true
-				if nestedMetadata.DeferredIPCIDRMatchGroups == 0 {
+				if metadata.DeferredIPCIDRMatchGroups == 0 {
 					deferredGroups = 0
 					break
 				}
-				deferredGroups |= nestedMetadata.DeferredIPCIDRMatchGroups
+				deferredGroups |= metadata.DeferredIPCIDRMatchGroups
 			}
 		}
 	}
+	snapshot.restore(metadata)
 	if matched {
 		metadata.DeferredIPCIDRMatchGroups |= deferredGroups
 	}

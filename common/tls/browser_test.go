@@ -26,7 +26,11 @@ func TestBrowserSystemCertificateStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { store.Close() })
+	scope := adapter.NewScope(context.Background(), logger.NOP())
+	t.Cleanup(func() { _ = scope.Close() })
+	if err := scope.Start("certificate", store, adapter.StartStateInitialize); err != nil {
+		t.Fatal(err)
+	}
 	ctx := service.ContextWith[adapter.CertificateStore](context.Background(), store)
 	config, err := NewSTDClient(ctx, logger.NOP(), "browser.test", option.OutboundTLSOptions{Enabled: true})
 	if err != nil {
@@ -80,7 +84,11 @@ func TestBrowserCustomCertificateStore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { store.Close() })
+			scope := adapter.NewScope(context.Background(), logger.NOP())
+			t.Cleanup(func() { _ = scope.Close() })
+			if err := scope.Start("certificate", store, adapter.StartStateInitialize); err != nil {
+				t.Fatal(err)
+			}
 			ctx := service.ContextWith[adapter.CertificateStore](context.Background(), store)
 			config, err := NewSTDClient(ctx, logger.NOP(), "browser.test", option.OutboundTLSOptions{Enabled: true})
 			if err != nil {
@@ -185,6 +193,12 @@ func (d *browserECHDNS) Exchange(ctx context.Context, request *mDNS.Msg, _ adapt
 	return d.exchange(ctx, request)
 }
 
+type browserECHTransportManager struct{ adapter.DNSTransportManager }
+
+func (*browserECHTransportManager) Transport(tag string) (adapter.DNSTransport, bool) {
+	return nil, tag == "ech-resolver"
+}
+
 func TestBrowserECHRefresh(t *testing.T) {
 	var queries int
 	wire := []byte{0, 1, 2}
@@ -207,7 +221,12 @@ func TestBrowserECHRefresh(t *testing.T) {
 		}
 		return response, nil
 	}})
-	config, err := NewClient(ctx, logger.NOP(), "inner.test", option.OutboundTLSOptions{Enabled: true, ECH: &option.OutboundECHOptions{Enabled: true, QueryServerName: "ech-query.test"}})
+	ctx = service.ContextWith[adapter.DNSTransportManager](ctx, &browserECHTransportManager{})
+	config, err := NewClientWithOptions(ClientOptions{
+		Context: ctx, Logger: logger.NOP(), ServerAddress: "inner.test",
+		Options:        option.OutboundTLSOptions{Enabled: true, ECH: &option.OutboundECHOptions{Enabled: true, QueryServerName: "ech-query.test"}},
+		DomainResolver: &option.DomainResolveOptions{Server: "ech-resolver"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,13 +248,13 @@ func TestBrowserECHRefresh(t *testing.T) {
 	if queries != 1 {
 		t.Fatalf("cached queries = %d", queries)
 	}
-	ech.lastUpdate = time.Now().Add(-time.Hour)
+	ech.state.entries["ech-query.test"] = echClientEntry{configList: wire, expireAt: time.Now().Add(-time.Hour)}
 	wire = []byte{0, 3, 4}
 	got, err := options.GetECHConfigList(ctx)
 	if err != nil || !bytes.Equal(got, wire) || queries != 2 {
 		t.Fatalf("refresh = %v, %v, queries=%d", got, err, queries)
 	}
-	ech.lastUpdate = time.Now().Add(-time.Hour)
+	ech.state.entries["ech-query.test"] = echClientEntry{configList: wire, expireAt: time.Now().Add(-time.Hour)}
 	lookupError = errors.New("DNS unavailable")
 	if _, err := options.GetECHConfigList(ctx); !errors.Is(err, lookupError) {
 		t.Fatalf("lookup error = %v", err)

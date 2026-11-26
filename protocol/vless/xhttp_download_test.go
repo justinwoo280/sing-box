@@ -36,8 +36,9 @@ func TestVLESSXHTTPDownloadDependencies(t *testing.T) {
 			log := logger.NOP()
 			registry := outbound.NewRegistry()
 			RegisterOutbound(registry)
-			manager := outbound.NewManager(log, registry, endpoint.NewManager(log, nil), "client")
-			defer manager.Close()
+			manager := outbound.NewManager(registry, endpoint.NewManager(nil), "client")
+			scope := adapter.NewScope(context.Background(), log)
+			defer scope.Close()
 			ctx := service.ContextWith[option.OutboundOptionsRegistry](context.Background(), registry)
 			ctx = service.ContextWith[adapter.OutboundManager](ctx, manager)
 
@@ -63,9 +64,11 @@ func TestVLESSXHTTPDownloadDependencies(t *testing.T) {
 			client, ok := manager.Outbound("client")
 			require.True(t, ok)
 			require.Equal(t, []string{"later"}, client.Dependencies())
-			err = manager.Start(adapter.StartStateStart)
+			err = manager.Initialize(nil)
 			if test.error == "" {
 				require.NoError(t, err)
+				require.NoError(t, manager.Start(adapter.StartStateInitialize, scope))
+				require.NoError(t, manager.Start(adapter.StartStateStart, scope))
 			} else {
 				require.ErrorContains(t, err, test.error)
 			}

@@ -29,12 +29,12 @@ type Store struct {
 	systemPool                *x509.CertPool
 	currentPool               *x509.CertPool
 	systemCertificatePEM      string
-	browserRootPEM            string
 	canExportSystemRoots      bool
 	certificate               string
 	certificatePaths          []string
 	certificateDirectoryPaths []string
 	watcher                   *fswatch.Watcher
+	anchorPEM                 []byte
 	//nolint:unused // populated only on darwin && cgo via the storePlatform embed.
 	platform storePlatform
 }
@@ -102,10 +102,12 @@ func NewStore(ctx context.Context, logger logger.Logger, options option.Certific
 		}
 		store.watcher = watcher
 	}
-	err := store.update()
+	currentPool, anchorPEM, err := store.load()
 	if err != nil {
 		return nil, E.Cause(err, "initializing certificate store")
 	}
+	store.currentPool = currentPool
+	store.anchorPEM = anchorPEM
 	return store, nil
 }
 
@@ -113,29 +115,26 @@ func (s *Store) Name() string {
 	return "certificate"
 }
 
-func (s *Store) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStateStart {
-		return nil
-	}
-	if s.watcher != nil {
-		return s.watcher.Start()
+func (s *Store) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	switch stage {
+	case adapter.StartStateInitialize:
+		s.access.Lock()
+		err := s.updatePlatformLocked(s.anchorPEM)
+		s.access.Unlock()
+		if err != nil {
+			return err
+		}
+		scope.Add(s.closePlatform)
+	case adapter.StartStateStart:
+		if s.watcher != nil {
+			err := s.watcher.Start()
+			if err != nil {
+				return err
+			}
+			scope.Add(s.watcher.Close)
+		}
 	}
 	return nil
-}
-
-func (s *Store) Close() error {
-	watcher := s.watcher
-	s.watcher = nil
-
-	var closeErr error
-	if watcher != nil {
-		closeErr = watcher.Close()
-	}
-	platformErr := s.closePlatform()
-	if platformErr != nil {
-		closeErr = platformErr
-	}
-	return closeErr
 }
 
 func (s *Store) Pool() *x509.CertPool {
@@ -156,7 +155,7 @@ func (s *Store) BrowserRootCertificates() (string, bool) {
 	if s.storeType == C.CertificateStoreSystem && !s.canExportSystemRoots {
 		return "", false
 	}
-	return s.browserRootPEM, true
+	return string(s.anchorPEM), true
 }
 
 // IsDefaultSystemStore reports whether a native TLS engine can use its own
@@ -171,9 +170,24 @@ func (s *Store) ExclusiveAnchors() bool {
 }
 
 func (s *Store) update() error {
-	currentPool, err := s.newBasePool()
+	currentPool, anchorPEM, err := s.load()
 	if err != nil {
 		return err
+	}
+	s.access.Lock()
+	defer s.access.Unlock()
+	if err := s.updatePlatformLocked(anchorPEM); err != nil {
+		return err
+	}
+	s.currentPool = currentPool
+	s.anchorPEM = anchorPEM
+	return nil
+}
+
+func (s *Store) load() (*x509.CertPool, []byte, error) {
+	currentPool, err := s.newBasePool()
+	if err != nil {
+		return nil, nil, err
 	}
 	pemBuffer := new(bytes.Buffer)
 	if s.storeType == C.CertificateStoreSystem && s.canExportSystemRoots {
@@ -183,29 +197,29 @@ func (s *Store) update() error {
 	case C.CertificateStoreMozilla:
 		pemContent := mozillaIncludedPEM()
 		if !currentPool.AppendCertsFromPEM([]byte(pemContent)) {
-			return E.New("invalid Mozilla included certificate PEM")
+			return nil, nil, E.New("invalid Mozilla included certificate PEM")
 		}
 		appendPEMBlock(pemBuffer, string(pemContent))
 	case C.CertificateStoreChrome:
 		pemContent := chromeIncludedPEM()
 		if !currentPool.AppendCertsFromPEM([]byte(pemContent)) {
-			return E.New("invalid Chrome included certificate PEM")
+			return nil, nil, E.New("invalid Chrome included certificate PEM")
 		}
 		appendPEMBlock(pemBuffer, string(pemContent))
 	}
 	if s.certificate != "" {
 		if !currentPool.AppendCertsFromPEM([]byte(s.certificate)) {
-			return E.New("invalid certificate PEM strings")
+			return nil, nil, E.New("invalid certificate PEM strings")
 		}
 		appendPEMBlock(pemBuffer, s.certificate)
 	}
 	for _, path := range s.certificatePaths {
 		pemContent, err := filemanager.ReadFile(s.ctx, path)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		if !currentPool.AppendCertsFromPEM(pemContent) {
-			return E.New("invalid certificate PEM file: ", path)
+			return nil, nil, E.New("invalid certificate PEM file: ", path)
 		}
 		appendPEMBlock(pemBuffer, string(pemContent))
 	}
@@ -226,16 +240,9 @@ func (s *Store) update() error {
 		}
 	}
 	if firstErr != nil {
-		return firstErr
+		return nil, nil, firstErr
 	}
-	s.access.Lock()
-	defer s.access.Unlock()
-	if err := s.updatePlatformLocked(pemBuffer.Bytes()); err != nil {
-		return err
-	}
-	s.currentPool = currentPool
-	s.browserRootPEM = pemBuffer.String()
-	return nil
+	return currentPool, pemBuffer.Bytes(), nil
 }
 
 func appendPEMBlock(buffer *bytes.Buffer, block string) {

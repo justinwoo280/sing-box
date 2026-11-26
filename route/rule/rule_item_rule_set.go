@@ -17,6 +17,7 @@ type RuleSetItem struct {
 	setList           []adapter.RuleSet
 	ipCidrMatchSource bool
 	ipCidrAcceptEmpty bool
+	closed            bool
 }
 
 func NewRuleSetItem(router adapter.Router, tagList []string, ipCIDRMatchSource bool, ipCidrAcceptEmpty bool) *RuleSetItem {
@@ -30,34 +31,43 @@ func NewRuleSetItem(router adapter.Router, tagList []string, ipCIDRMatchSource b
 
 func (r *RuleSetItem) Start() error {
 	_ = r.Close()
+	setList := make([]adapter.RuleSet, 0, len(r.tagList))
 	for _, tag := range r.tagList {
 		ruleSet, loaded := r.router.RuleSet(tag)
 		if !loaded {
-			_ = r.Close()
 			return E.New("rule-set not found: ", tag)
 		}
-		ruleSet.IncRef()
-		r.setList = append(r.setList, ruleSet)
+		setList = append(setList, ruleSet)
 	}
+	for _, ruleSet := range setList {
+		ruleSet.IncRef()
+	}
+	r.setList = setList
+	r.closed = false
 	return nil
 }
 
 func (r *RuleSetItem) Close() error {
+	if r.closed {
+		return nil
+	}
+	r.closed = true
 	for _, ruleSet := range r.setList {
 		ruleSet.DecRef()
 	}
-	clear(r.setList)
-	r.setList = nil
 	return nil
 }
 
 func (r *RuleSetItem) Match(metadata *adapter.InboundContext) bool {
+	snapshot := snapshotRuleMatch(metadata)
 	for _, ruleSet := range r.setList {
-		nestedMetadata := r.nestedMetadata(metadata)
-		if ruleSet.Match(&nestedMetadata) {
+		r.prepareNestedMatch(metadata)
+		if ruleSet.Match(metadata) {
+			snapshot.restore(metadata)
 			return true
 		}
 	}
+	snapshot.restore(metadata)
 	return false
 }
 
@@ -67,17 +77,21 @@ func (r *RuleSetItem) matchWithOuterGroups(metadata *adapter.InboundContext, out
 		matched        bool
 		deferredGroups uint8
 	)
+	snapshot := snapshotRuleMatch(metadata)
 	for _, ruleSet := range r.setList {
-		nestedMetadata := r.nestedMetadata(metadata)
-		if provider, isProvider := ruleSet.(mergeableRuleProvider); isProvider {
-			branch := provider.mergeableRule()
+		r.prepareNestedMatch(metadata)
+		var rule adapter.HeadlessRule = ruleSet
+		if provider, isProvider := ruleSet.(ruleSetContentProvider); isProvider {
+			content := provider.loadContent()
+			branch := content.mergeableRule()
 			if branch != nil {
-				branchGroups, branchMatched := branch.evaluateForMerge(&nestedMetadata)
+				branchGroups, branchMatched := branch.evaluateForMerge(metadata)
 				if branchMatched {
 					merged := outerGroups.mergeWith(branchGroups)
 					if merged.done() {
-						branchDeferredGroups := nestedMetadata.DeferredIPCIDRMatchGroups &^ uint8(merged.satisfied)
+						branchDeferredGroups := metadata.DeferredIPCIDRMatchGroups &^ uint8(merged.satisfied)
 						if branchDeferredGroups == 0 {
+							snapshot.restore(metadata)
 							metadata.DeferredIPCIDRMatchGroups &^= uint8(merged.satisfied)
 							return true
 						}
@@ -87,64 +101,76 @@ func (r *RuleSetItem) matchWithOuterGroups(metadata *adapter.InboundContext, out
 				}
 				continue
 			}
+			rule = content
 		}
-		if outerDone && ruleSet.Match(&nestedMetadata) {
-			if nestedMetadata.DeferredIPCIDRMatchGroups == 0 {
+		if outerDone && rule.Match(metadata) {
+			if metadata.DeferredIPCIDRMatchGroups == 0 {
+				snapshot.restore(metadata)
 				return true
 			}
 			matched = true
-			deferredGroups |= nestedMetadata.DeferredIPCIDRMatchGroups
+			deferredGroups |= metadata.DeferredIPCIDRMatchGroups
 		}
 	}
+	snapshot.restore(metadata)
 	if matched {
 		metadata.DeferredIPCIDRMatchGroups |= deferredGroups
 	}
 	return matched
 }
 
-func (r *RuleSetItem) nestedMetadata(metadata *adapter.InboundContext) adapter.InboundContext {
-	nestedMetadata := *metadata
-	nestedMetadata.ResetRuleMatchCache()
-	nestedMetadata.IPCIDRMatchSource = r.ipCidrMatchSource
-	nestedMetadata.IPCIDRAcceptEmpty = r.ipCidrAcceptEmpty
-	return nestedMetadata
+func (r *RuleSetItem) prepareNestedMatch(metadata *adapter.InboundContext) {
+	metadata.ResetRuleMatchCache()
+	metadata.IPCIDRMatchSource = r.ipCidrMatchSource
+	metadata.IPCIDRAcceptEmpty = r.ipCidrAcceptEmpty
 }
 
-type mergeableRuleProvider interface {
-	mergeableRule() *DefaultHeadlessRule
+type ruleSetContentProvider interface {
+	loadContent() *ruleSetContent
 }
 
-func mergeableRuleIn(rules []adapter.HeadlessRule) *DefaultHeadlessRule {
-	if len(rules) != 1 {
+type ruleSetContent struct {
+	rules    []adapter.HeadlessRule
+	metadata adapter.RuleSetMetadata
+}
+
+func (c *ruleSetContent) mergeableRule() *DefaultHeadlessRule {
+	if len(c.rules) != 1 {
 		return nil
 	}
-	rule, isDefault := rules[0].(*DefaultHeadlessRule)
+	rule, isDefault := c.rules[0].(*DefaultHeadlessRule)
 	if !isDefault || rule.invert || rule.ruleSetItem != nil {
 		return nil
 	}
 	return rule
 }
 
-func matchAnyHeadlessRule(rules []adapter.HeadlessRule, metadata *adapter.InboundContext) bool {
+func (c *ruleSetContent) Match(metadata *adapter.InboundContext) bool {
 	var (
 		matched        bool
 		deferredGroups uint8
 	)
-	for _, rule := range rules {
-		nestedMetadata := *metadata
-		nestedMetadata.ResetRuleMatchCache()
-		if rule.Match(&nestedMetadata) {
-			if nestedMetadata.DeferredIPCIDRMatchGroups == 0 {
+	snapshot := snapshotRuleMatch(metadata)
+	for _, rule := range c.rules {
+		metadata.ResetRuleMatchCache()
+		if rule.Match(metadata) {
+			if metadata.DeferredIPCIDRMatchGroups == 0 {
+				snapshot.restore(metadata)
 				return true
 			}
 			matched = true
-			deferredGroups |= nestedMetadata.DeferredIPCIDRMatchGroups
+			deferredGroups |= metadata.DeferredIPCIDRMatchGroups
 		}
 	}
+	snapshot.restore(metadata)
 	if matched {
 		metadata.DeferredIPCIDRMatchGroups |= deferredGroups
 	}
 	return matched
+}
+
+func (c *ruleSetContent) String() string {
+	return strings.Join(F.MapToString(c.rules), " ")
 }
 
 func (r *RuleSetItem) ContainsDestinationIPCIDRRule() bool {

@@ -64,21 +64,19 @@ func NewClientWithDialerOptions(ctx context.Context, logger logger.ContextLogger
 	}
 	separateDialer := dl.Detour != "" || dl.DomainResolver != nil || dl.DomainStrategy != option.DomainStrategy(C.DomainStrategyAsIS)
 	downloadDialer := uploadDialer
+	var effectiveDialOptions option.DialerOptions
+	if dl.Detour != "" {
+		effectiveDialOptions.Detour = dl.Detour
+	} else if dialOptions != nil {
+		effectiveDialOptions = *dialOptions
+	}
+	if dl.DomainResolver != nil {
+		effectiveDialOptions.DomainResolver = dl.DomainResolver
+	}
+	if dl.DomainStrategy != option.DomainStrategy(C.DomainStrategyAsIS) {
+		effectiveDialOptions.DomainStrategy = dl.DomainStrategy
+	}
 	if separateDialer || dialOptions != nil && downloadAddr.IsDomain() && !serverAddr.IsDomain() {
-		var effectiveDialOptions option.DialerOptions
-		if dl.Detour != "" {
-			// A different outbound owns its own socket settings and, unless
-			// overridden, handles its own DNS. The tag is resolved on first use.
-			effectiveDialOptions.Detour = dl.Detour
-		} else if dialOptions != nil {
-			effectiveDialOptions = *dialOptions
-		}
-		if dl.DomainResolver != nil {
-			effectiveDialOptions.DomainResolver = dl.DomainResolver
-		}
-		if dl.DomainStrategy != option.DomainStrategy(C.DomainStrategyAsIS) {
-			effectiveDialOptions.DomainStrategy = dl.DomainStrategy
-		}
 		var err error
 		downloadDialer, err = dialer.NewWithOptions(dialer.Options{
 			Context: ctx, Options: effectiveDialOptions, RemoteIsDomain: downloadAddr.IsDomain(),
@@ -96,7 +94,10 @@ func NewClientWithDialerOptions(ctx context.Context, logger logger.ContextLogger
 	}
 	if dl.TLS != nil {
 		var err error
-		downloadTLS, err = tls.NewClient(ctx, logger, downloadAddr.AddrString(), *dl.TLS)
+		downloadTLS, err = tls.NewClientWithOptions(tls.ClientOptions{
+			Context: ctx, Logger: logger, ServerAddress: downloadAddr.AddrString(),
+			Options: *dl.TLS, DomainResolver: effectiveDialOptions.DomainResolver,
+		})
 		if err != nil {
 			return nil, E.Cause(err, "xhttp: create download TLS config")
 		}

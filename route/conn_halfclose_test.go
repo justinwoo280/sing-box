@@ -21,8 +21,8 @@ type halfCloseTestConn struct {
 func (c *halfCloseTestConn) CloseWrite() error { c.once.Do(func() { close(c.halfClosed) }); return nil }
 
 func TestConnectionCopyPreservesTrackedHalfClose(t *testing.T) {
-	manager := NewConnectionManager(logger.NOP())
-	defer manager.Close()
+	manager := NewConnectionManager(context.Background(), logger.NOP())
+	defer manager.CloseAll()
 	source, client := net.Pipe()
 	defer source.Close()
 	defer client.Close()

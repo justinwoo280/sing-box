@@ -43,11 +43,12 @@ type Outbound struct {
 
 func newOutboundTLS(ctx context.Context, logger logger.ContextLogger, options option.EWPOutboundOptions) (tls.Config, error) {
 	return tls.NewClientWithOptions(tls.ClientOptions{
-		Context:       ctx,
-		Logger:        logger,
-		ServerAddress: options.Server,
-		Options:       common.PtrValueOrDefault(options.TLS),
-		Browser:       options.Transport.IsBrowserXHTTP(),
+		Context:        ctx,
+		Logger:         logger,
+		ServerAddress:  options.Server,
+		Options:        common.PtrValueOrDefault(options.TLS),
+		Browser:        options.Transport.IsBrowserXHTTP(),
+		DomainResolver: options.DomainResolver,
 	})
 }
 
@@ -208,6 +209,13 @@ func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	if h.multiplexDialer != nil {
 		h.multiplexDialer.Reset()
 	}
+}
+
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(h.Close)
+	}
+	return nil
 }
 
 func (h *Outbound) Close() error {

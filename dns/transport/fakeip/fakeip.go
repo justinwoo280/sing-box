@@ -35,7 +35,10 @@ func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, opt
 	if !inet4Range.IsValid() && !inet6Range.IsValid() {
 		return nil, E.New("at least one of inet4_range or inet6_range must be set")
 	}
-	store := NewStore(ctx, logger, inet4Range, inet6Range)
+	store, err := NewStore(ctx, logger, inet4Range, inet6Range)
+	if err != nil {
+		return nil, err
+	}
 	return &Transport{
 		TransportAdapter: dns.NewTransportAdapter(C.DNSTypeFakeIP, tag, nil),
 		logger:           logger,
@@ -45,15 +48,16 @@ func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, opt
 	}, nil
 }
 
-func (t *Transport) Start(stage adapter.StartStage) error {
+func (t *Transport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
-	return t.store.Start()
-}
-
-func (t *Transport) Close() error {
-	return t.store.Close()
+	err := t.store.Start()
+	if err != nil {
+		return err
+	}
+	scope.Add(t.store.Close)
+	return nil
 }
 
 func (t *Transport) Reset() {
@@ -67,7 +71,11 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 	if question.Qtype == mDNS.TypeA && !t.inet4Enabled || question.Qtype == mDNS.TypeAAAA && !t.inet6Enabled {
 		return dns.FixedResponseStatus(message, mDNS.RcodeSuccess), nil
 	}
-	address, err := t.store.Create(dns.FqdnToDomain(question.Name), question.Qtype == mDNS.TypeAAAA)
+	domain := dns.FqdnToDomain(question.Name)
+	if len(domain) > 255 {
+		return nil, E.New("domain name too long for fakeip")
+	}
+	address, err := t.store.Create(domain, question.Qtype == mDNS.TypeAAAA)
 	if err != nil {
 		return nil, err
 	}

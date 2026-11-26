@@ -12,7 +12,7 @@ on:
 env:
   REGISTRY_IMAGE: ghcr.io/justinwoo280/sing-box
 
-permissions: 
+permissions:
   contents: read
   packages: write
 

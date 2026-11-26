@@ -34,6 +34,7 @@ type GunConn struct {
 	reader      *std_bufio.Reader
 	flusher     http.Flusher
 	cancel      context.CancelFunc
+	onClose     func()
 	readAccess  sync.Mutex
 	writeAccess sync.Mutex
 	frame       []byte
@@ -195,6 +196,9 @@ func (c *GunConn) Close() error {
 	c.frame = nil
 	c.cache = nil
 	c.readAccess.Unlock()
+	if c.onClose != nil {
+		c.onClose()
+	}
 	return err
 }
 

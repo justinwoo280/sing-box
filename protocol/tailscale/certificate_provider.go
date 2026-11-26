@@ -24,7 +24,10 @@ func RegisterCertificateProvider(registry *certificate.Registry) {
 	certificate.Register[option.TailscaleCertificateProviderOptions](registry, C.TypeTailscale, NewCertificateProvider)
 }
 
-var _ adapter.CertificateProviderService = (*CertificateProvider)(nil)
+var (
+	_ adapter.CertificateProviderService = (*CertificateProvider)(nil)
+	_ adapter.Referrer                   = (*CertificateProvider)(nil)
+)
 
 type CertificateProvider struct {
 	certificate.Adapter
@@ -63,7 +66,11 @@ func NewCertificateProvider(ctx context.Context, _ log.ContextLogger, tag string
 	}, nil
 }
 
-func (p *CertificateProvider) Start(stage adapter.StartStage) error {
+func (p *CertificateProvider) References() ([]string, []string) {
+	return []string{p.endpointTag}, nil
+}
+
+func (p *CertificateProvider) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -79,10 +86,6 @@ func (p *CertificateProvider) Start(stage adapter.StartStage) error {
 		return p.dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
 	}
 	p.localClient = localClient
-	return nil
-}
-
-func (p *CertificateProvider) Close() error {
 	return nil
 }
 

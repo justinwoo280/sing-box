@@ -32,7 +32,7 @@ func newBrowserRealityClient(options ClientOptions) (Config, error) {
 	if err != nil || len(shortID) > 8 {
 		return nil, errors.New("browser REALITY: invalid short_id")
 	}
-	base, err := newSTDClient(options.Context, options.Logger, options.ServerAddress, o, options.AllowEmptyServerName)
+	base, err := newSTDClient(options.Context, options.Logger, options.ServerAddress, o, options.AllowEmptyServerName, options.DomainResolver, options.DirectResolver)
 	if err != nil {
 		return nil, err
 	}

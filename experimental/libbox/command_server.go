@@ -2,13 +2,11 @@ package libbox
 
 import (
 	"context"
-	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
-	"syscall"
-	"time"
+	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
@@ -18,6 +16,9 @@ import (
 	"github.com/sagernet/sing-box/service/powerreport"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
+	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/pipe"
 	"github.com/sagernet/sing/service"
 
 	"google.golang.org/grpc"
@@ -36,9 +37,9 @@ type CommandServer struct {
 	platformInterface PlatformInterface
 	platformWrapper   *platformInterfaceWrapper
 	powerManager      *powerreport.Manager
+	oomRecorder       *oomkiller.Recorder
 	grpcServer        *grpc.Server
 	listener          net.Listener
-	endPauseTimer     *time.Timer
 }
 
 type CommandServerHandler interface {
@@ -57,7 +58,6 @@ func NewCommandServer(handler CommandServerHandler, platformInterface PlatformIn
 	service.MustRegister[*powerreport.Manager](ctx, powerManager)
 	platformWrapper := &platformInterfaceWrapper{
 		iif:          platformInterface,
-		useProcFS:    platformInterface.UseProcFS(),
 		powerManager: powerManager,
 	}
 	service.MustRegister[adapter.PlatformInterface](ctx, platformWrapper)
@@ -83,12 +83,14 @@ func NewCommandServer(handler CommandServerHandler, platformInterface PlatformIn
 		// GroupID:          sGroupID,
 		// SystemProxyEnabled: false,
 	})
-	reporter := &oomReporter{startedService: server.StartedService}
-	service.MustRegister[oomkiller.OOMReporter](ctx, reporter)
+	oomRecorder := oomkiller.NewRecorder(OOMRecorderOptions(server.StartedService))
+	service.MustRegister[*oomkiller.Recorder](ctx, oomRecorder)
+	oomRecorder.Start()
+	server.oomRecorder = oomRecorder
 	server.managedService = daemon.NewManagedService(daemon.ManagedServiceOptions{
 		Handler:     (*platformHandler)(server),
 		Debug:       sDebug,
-		OOMReporter: reporter,
+		OOMRecorder: oomRecorder,
 	})
 	if sPowerReportEnabled {
 		err := powerManager.Start(PowerReportOptions(server.StartedService))
@@ -143,19 +145,10 @@ func (s *CommandServer) Start() error {
 	if sCommandServerListenPort == 0 {
 		sockPath := filepath.Join(sBasePath, "command.sock")
 		os.Remove(sockPath)
-		for range 30 {
-			listener, err = net.ListenUnix("unix", &net.UnixAddr{
-				Name: sockPath,
-				Net:  "unix",
-			})
-			if err == nil {
-				break
-			}
-			if !errors.Is(err, syscall.EROFS) {
-				break
-			}
-			time.Sleep(time.Second)
-		}
+		listener, err = net.ListenUnix("unix", &net.UnixAddr{
+			Name: sockPath,
+			Net:  "unix",
+		})
 		if err != nil {
 			return E.Cause(err, "listen command server")
 		}
@@ -195,6 +188,7 @@ func (s *CommandServer) Close() {
 	}
 	common.Close(s.listener)
 	s.StartedService.Close()
+	s.oomRecorder.Close()
 	s.powerManager.Close()
 }
 
@@ -248,36 +242,51 @@ func (s *CommandServer) NeedFindProcess() bool {
 	return instance.Box().Router().NeedFindProcess()
 }
 
+// iOS wakes the extension for every push and background task, so wake is ignored there and
+// the pause ends on the screen state instead.
 func (s *CommandServer) Pause() {
 	recorder := s.powerManager.Recorder()
 	if recorder != nil {
-		recorder.RecordPlatformEvent("ne-sleep")
+		recorder.RecordDeviceSleep()
 	}
-	instance := s.StartedService.Instance()
-	if instance == nil || instance.PauseManager() == nil {
+	if !(C.IsAndroid || C.IsIos) || C.IsTvOS {
 		return
 	}
-	instance.PauseManager().DevicePause()
-	if C.IsIos {
-		if s.endPauseTimer == nil {
-			s.endPauseTimer = time.AfterFunc(time.Minute, instance.PauseManager().DeviceWake)
-		} else {
-			s.endPauseTimer.Reset(time.Minute)
-		}
+	instance := s.StartedService.Instance()
+	if instance == nil || instance.Box() == nil || instance.PauseManager() == nil {
+		return
 	}
+	instance.Box().CloseIdleConnections()
+	instance.PauseManager().DevicePause()
 }
 
 func (s *CommandServer) Wake() {
 	recorder := s.powerManager.Recorder()
 	if recorder != nil {
-		recorder.RecordPlatformEvent("ne-wake")
+		recorder.RecordDeviceWake()
+	}
+	if !C.IsAndroid {
+		return
 	}
 	instance := s.StartedService.Instance()
 	if instance == nil || instance.PauseManager() == nil {
 		return
 	}
-	if !C.IsIos {
-		instance.PauseManager().DeviceWake()
+	instance.PauseManager().DeviceWake()
+}
+
+func (s *CommandServer) WakeNow() {
+	instance := s.StartedService.Instance()
+	if instance == nil || instance.PauseManager() == nil {
+		return
+	}
+	instance.PauseManager().DeviceWake()
+}
+
+func (s *CommandServer) RecordScreenState(on bool) {
+	recorder := s.powerManager.Recorder()
+	if recorder != nil {
+		recorder.RecordScreenState(on)
 	}
 }
 
@@ -295,6 +304,88 @@ func (s *CommandServer) UpdateWIFIState() {
 		return
 	}
 	instance.Box().Network().UpdateWIFIState(context.Background())
+}
+
+func (s *CommandServer) NewHTTPClient() HTTPClient {
+	client := NewHTTPClient().(*httpClient)
+	client.tunneled = true
+	client.transport.DialContext = s.dialContext
+	return client
+}
+
+func (s *CommandServer) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	instance, err := s.StartedService.WaitStartedInstance(ctx)
+	if err != nil {
+		return nil, E.Cause(err, "libbox: wait for service")
+	}
+	input, output := pipe.Pipe()
+	clientConn := &routedClientConn{Conn: input}
+	go instance.Box().Router().RouteConnectionEx(log.ContextWithNewID(instance.Context()), &routedConn{Conn: output, clientConn: clientConn}, adapter.InboundContext{
+		Network:     N.NetworkTCP,
+		Destination: M.ParseSocksaddr(addr),
+	}, func(error) {})
+	return clientConn, nil
+}
+
+type routedClientConn struct {
+	net.Conn
+	access   sync.Mutex
+	routeErr error
+}
+
+func (c *routedClientConn) closeWithError(err error) {
+	c.access.Lock()
+	defer c.access.Unlock()
+	if c.routeErr == nil {
+		c.routeErr = err
+	}
+}
+
+func (c *routedClientConn) wrapError(err error) error {
+	c.access.Lock()
+	defer c.access.Unlock()
+	if c.routeErr != nil {
+		return E.Cause(c.routeErr, "libbox: route connection")
+	}
+	return err
+}
+
+func (c *routedClientConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if err != nil {
+		err = c.wrapError(err)
+	}
+	return n, err
+}
+
+func (c *routedClientConn) Write(p []byte) (int, error) {
+	n, err := c.Conn.Write(p)
+	if err != nil {
+		err = c.wrapError(err)
+	}
+	return n, err
+}
+
+type routedConn struct {
+	net.Conn
+	clientConn *routedClientConn
+}
+
+func (c *routedConn) HandshakeFailure(err error) error {
+	c.clientConn.closeWithError(err)
+	return nil
+}
+
+func (c *routedConn) ReaderReplaceable() bool {
+	return true
+}
+
+func (c *routedConn) WriterReplaceable() bool {
+	return true
+}
+
+func (c *routedConn) Upstream() any {
+	return c.Conn
 }
 
 type platformHandler CommandServer
@@ -333,3 +424,9 @@ func (h *platformHandler) WriteDebugMessage(message string) {
 func (h *platformHandler) ConnectSSHAgent() (int32, error) {
 	return (*CommandServer)(h).handler.ConnectSSHAgent()
 }
+
+var (
+	_ N.HandshakeFailure   = (*routedConn)(nil)
+	_ N.ReaderWithUpstream = (*routedConn)(nil)
+	_ N.WriterWithUpstream = (*routedConn)(nil)
+)

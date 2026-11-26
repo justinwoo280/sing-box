@@ -29,8 +29,7 @@ type ClientBind struct {
 	dialer              N.Dialer
 	reservedAccess      sync.RWMutex
 	reservedForEndpoint map[netip.AddrPort][3]uint8
-	isConnect           bool
-	connectAddr         netip.AddrPort
+	destination         M.Socksaddr
 	reserved            [3]uint8
 }
 
@@ -41,15 +40,14 @@ type bindState struct {
 	conn       *wireConn
 }
 
-func NewClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, isConnect bool, connectAddr netip.AddrPort, reserved [3]uint8) *ClientBind {
+func NewClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, destination M.Socksaddr, reserved [3]uint8) *ClientBind {
 	return &ClientBind{
 		ctx:                 ctx,
 		logger:              logger,
 		pauseManager:        service.FromContext[pause.Manager](ctx),
 		dialer:              dialer,
 		reservedForEndpoint: make(map[netip.AddrPort][3]uint8),
-		isConnect:           isConnect,
-		connectAddr:         connectAddr,
+		destination:         destination,
 		reserved:            reserved,
 	}
 }
@@ -81,24 +79,13 @@ func (c *ClientBind) connectState(state *bindState) (*wireConn, error) {
 			return serverConn, nil
 		}
 	}
-	if c.isConnect {
-		udpConn, err := c.dialer.DialContext(state.ctx, N.NetworkUDP, M.SocksaddrFromNetIP(c.connectAddr))
-		if err != nil {
-			return nil, err
-		}
-		state.conn = &wireConn{
-			PacketConn: bufio.NewUnbindPacketConn(udpConn),
-			done:       make(chan struct{}),
-		}
-	} else {
-		udpConn, err := c.dialer.ListenPacket(state.ctx, M.Socksaddr{Addr: netip.IPv4Unspecified()})
-		if err != nil {
-			return nil, err
-		}
-		state.conn = &wireConn{
-			PacketConn: bufio.NewPacketConn(udpConn),
-			done:       make(chan struct{}),
-		}
+	udpConn, err := c.dialer.ListenPacket(state.ctx, c.destination)
+	if err != nil {
+		return nil, err
+	}
+	state.conn = &wireConn{
+		PacketConn: bufio.NewPacketConn(udpConn),
+		done:       make(chan struct{}),
 	}
 	if common.Done(state.ctx) {
 		state.conn.Close()

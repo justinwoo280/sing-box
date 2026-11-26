@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"reflect"
+	"slices"
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
@@ -45,6 +46,11 @@ func parseConfig(ctx context.Context, configContent string) (option.Options, err
 		return option.Options{}, E.Cause(err, "decode config")
 	}
 	return options, nil
+}
+
+func ParseConfig(configContent string) error {
+	_, err := parseConfig(baseContext(nil), configContent)
+	return err
 }
 
 func CheckConfig(configContent string) error {
@@ -268,4 +274,14 @@ func FormatConfig(configContent string) (*StringBox, error) {
 		return nil, err
 	}
 	return wrapString(buffer.String()), nil
+}
+
+func HasTunInbound(configContent string) (bool, error) {
+	options, err := parseConfig(baseContext(nil), configContent)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(options.Inbounds, func(inbound option.Inbound) bool {
+		return inbound.Type == C.TypeTun
+	}), nil
 }

@@ -46,12 +46,8 @@ func newPlatformTransport(ctx context.Context, logger log.ContextLogger, iif Loc
 	}, nil
 }
 
-func (p *platformTransport) Start(stage adapter.StartStage) error {
+func (p *platformTransport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	p.preferredResolver.Start(stage)
-	return nil
-}
-
-func (p *platformTransport) Close() error {
 	return nil
 }
 
@@ -82,7 +78,7 @@ func (p *platformTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*m
 		context: ctx,
 	}
 	if p.iif.Raw() {
-		messageBytes, err := message.Pack()
+		messageBytes, err := message.Copy().Pack()
 		if err != nil {
 			return nil, err
 		}

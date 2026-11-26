@@ -72,7 +72,8 @@ func TestLateHTTPConnConcurrentSetupReadClose(t *testing.T) {
 }
 
 func TestHTTPClientConcurrentReset(t *testing.T) {
-	client := &Client{transport: &http.Transport{}}
+	client := &Client{}
+	client.transport.Store(&http.Transport{})
 	var group sync.WaitGroup
 	for range 16 {
 		group.Go(func() { client.Close() })
@@ -137,13 +138,14 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 
 func TestHTTP2ConnCloseCancelsRoundTrip(t *testing.T) {
 	started, canceled := make(chan struct{}), make(chan struct{})
-	client := &Client{http2: true, transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	client := &Client{http2: true}
+	client.transport.Store(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		defer request.Body.Close()
 		close(started)
 		<-request.Context().Done()
 		close(canceled)
 		return nil, request.Context().Err()
-	})}
+	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	conn, err := client.DialContext(ctx)

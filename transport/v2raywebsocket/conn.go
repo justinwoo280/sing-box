@@ -14,6 +14,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/ws"
@@ -46,6 +47,9 @@ func NewConn(conn net.Conn, remoteAddr net.Addr, state ws.State) *WebsocketConn 
 	}
 	controlHandler := wsutil.ControlFrameHandler(conn, state)
 	c.controlHandler = func(header ws.Header, reader io.Reader) error {
+		if header.Length > ws.MaxControlFramePayloadSize {
+			return ws.ErrProtocolControlPayloadOverflow
+		}
 		c.writeAccess.Lock()
 		defer c.writeAccess.Unlock()
 		if c.closed.Load() {
@@ -95,8 +99,8 @@ func (c *WebsocketConn) Read(b []byte) (n int, err error) {
 			return
 		}
 		if header.OpCode.IsControl() {
-			if header.Length > 128 {
-				err = wsutil.ErrFrameTooLarge
+			if header.Length > ws.MaxControlFramePayloadSize {
+				err = ws.ErrProtocolControlPayloadOverflow
 				return
 			}
 			err = wrapWsError(c.controlHandler(header, c.reader))
@@ -116,17 +120,7 @@ func (c *WebsocketConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *WebsocketConn) Write(p []byte) (n int, err error) {
-	c.writeAccess.Lock()
-	defer c.writeAccess.Unlock()
-	if c.closed.Load() {
-		return 0, net.ErrClosed
-	}
-	err = wrapWsError(wsutil.WriteMessage(c.Conn, c.state, ws.OpBinary, p))
-	if err != nil {
-		return
-	}
-	n = len(p)
-	return
+	return bufio.WriteBuffer(c, buf.As(p))
 }
 
 func (c *WebsocketConn) WriteBuffer(buffer *buf.Buffer) error {

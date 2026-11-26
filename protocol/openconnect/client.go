@@ -43,25 +43,25 @@ var (
 
 type Endpoint struct {
 	endpointBase
-	loopContext             context.Context
-	cancelLoop              context.CancelFunc
-	dnsRouter               adapter.DNSRouter
-	client                  *openconnect.Client
-	device                  openconnecttransport.Device
-	server                  string
-	flavor                  string
-	stateAccess             sync.Mutex
-	state                   atomic.Pointer[clientState]
-	dnsTransportAccess      sync.Mutex
-	dnsTransport            *DNSTransport
-	deviceStarted           bool
-	readLoopDone            chan struct{}
-	statusAccess            sync.Mutex
-	statusUpdated           chan struct{}
-	terminalError           string
-	authFormLoopDone        chan struct{}
-	activeTransportLoopDone chan struct{}
-	hotpCounter             atomic.Uint64
+	loopContext        context.Context
+	cancelLoop         context.CancelFunc
+	dnsRouter          adapter.DNSRouter
+	outboundManager    adapter.OutboundManager
+	detour             string
+	clientOptions      openconnect.ClientOptions
+	client             *openconnect.Client
+	device             openconnecttransport.Device
+	server             string
+	flavor             string
+	stateAccess        sync.Mutex
+	state              atomic.Pointer[clientState]
+	dnsTransportAccess sync.Mutex
+	dnsTransport       *DNSTransport
+	deviceStarted      bool
+	statusAccess       sync.Mutex
+	statusUpdated      chan struct{}
+	terminalError      string
+	hotpCounter        atomic.Uint64
 }
 
 type clientState struct {
@@ -110,10 +110,12 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 			router:  router,
 			logger:  logger,
 		},
-		loopContext:   loopContext,
-		cancelLoop:    cancelLoop,
-		dnsRouter:     service.FromContext[adapter.DNSRouter](ctx),
-		statusUpdated: make(chan struct{}),
+		loopContext:     loopContext,
+		cancelLoop:      cancelLoop,
+		dnsRouter:       service.FromContext[adapter.DNSRouter](ctx),
+		outboundManager: service.FromContext[adapter.OutboundManager](ctx),
+		detour:          options.Detour,
+		statusUpdated:   make(chan struct{}),
 	}
 	openConnectEndpoint.state.Store(new(clientState))
 	success := false
@@ -190,6 +192,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, err
 	}
+	openConnectEndpoint.clientOptions = clientOptions
 	openConnectEndpoint.client = client
 	success = true
 	return openConnectEndpoint, nil
@@ -339,6 +342,7 @@ func (e *Endpoint) buildClientOptions(options option.OpenConnectEndpointOptions,
 		},
 		FormEntries:           formEntries,
 		Dialer:                outboundDialer,
+		ProxiedDialer:         options.Detour != "",
 		Logger:                e.logger,
 		OnTunnelConfiguration: e.handleTunnelConfiguration,
 	}, nil
@@ -418,34 +422,75 @@ func (e *Endpoint) updateState(update func(state *clientState)) {
 	e.state.Store(&newState)
 }
 
-func (e *Endpoint) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStatePostStart {
-		return nil
+func (e *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	switch stage {
+	case adapter.StartStateInitialize:
+		if e.clientOptions.ProxiedDialer {
+			detour, loaded := e.outboundManager.Outbound(e.detour)
+			if loaded && detour.Type() == C.TypeDirect {
+				e.clientOptions.ProxiedDialer = false
+				client, err := openconnect.NewClient(e.clientOptions)
+				if err != nil {
+					return err
+				}
+				err = e.client.Close()
+				if err != nil {
+					return E.Cause(err, "close client")
+				}
+				e.client = client
+			}
+		}
+		scope.Add(func() error {
+			e.notifyStatusUpdated()
+			return nil
+		})
+		scope.Add(e.device.Close)
+		scope.Add(func() error {
+			e.cancelLoop()
+			return nil
+		})
+	case adapter.StartStatePostStart:
+		var loopGroup sync.WaitGroup
+		scope.Add(func() error {
+			loopGroup.Wait()
+			return nil
+		})
+		err := e.client.Start()
+		if err != nil {
+			return err
+		}
+		scope.Add(e.client.Close)
+		e.stateAccess.Lock()
+		e.updateState(func(state *clientState) {
+			state.started = true
+		})
+		e.stateAccess.Unlock()
+		scope.Add(func() error {
+			e.stateAccess.Lock()
+			e.updateState(func(state *clientState) {
+				state.started = false
+			})
+			e.stateAccess.Unlock()
+			return nil
+		})
+		loopGroup.Go(func() {
+			e.readLoop(scope.Context())
+		})
+		loopGroup.Go(func() {
+			e.watchAuthForms(scope.Context())
+		})
+		loopGroup.Go(func() {
+			e.watchActiveTransport(scope.Context())
+		})
 	}
-	err := e.client.Start()
-	if err != nil {
-		return err
-	}
-	e.stateAccess.Lock()
-	e.updateState(func(state *clientState) {
-		state.started = true
-	})
-	e.readLoopDone = make(chan struct{})
-	e.authFormLoopDone = make(chan struct{})
-	e.activeTransportLoopDone = make(chan struct{})
-	e.stateAccess.Unlock()
-	go e.readLoop()
-	go e.watchAuthForms()
-	go e.watchActiveTransport()
 	return nil
 }
 
-func (e *Endpoint) readLoop() {
-	defer close(e.readLoopDone)
+func (e *Endpoint) readLoop(ctx context.Context) {
 	for {
-		packetBuffers, err := e.client.ReadDataPackets(e.loopContext)
+		packetBuffers, err := e.client.ReadDataPackets(ctx)
 		if err != nil {
-			if E.IsClosedOrCanceled(err) || e.loopContext.Err() != nil {
+			if E.IsClosedOrCanceled(err) || ctx.Err() != nil {
 				return
 			}
 			e.logger.Error(E.Cause(err, "client terminated"))
@@ -455,36 +500,12 @@ func (e *Endpoint) readLoop() {
 		err = e.device.WriteInboundBuffers(packetBuffers)
 		buf.ReleaseMulti(packetBuffers)
 		if err != nil {
-			err = E.Cause(err, "write packet to device")
-			e.logger.Error(err)
-			e.setTerminalError(err)
-			return
+			if E.IsCanceled(err) || ctx.Err() != nil {
+				return
+			}
+			e.logger.Debug(E.Cause(err, "write packet to device"))
 		}
 	}
-}
-
-func (e *Endpoint) Close() error {
-	e.stateAccess.Lock()
-	e.updateState(func(state *clientState) {
-		state.started = false
-	})
-	readLoopDone := e.readLoopDone
-	authFormLoopDone := e.authFormLoopDone
-	activeTransportLoopDone := e.activeTransportLoopDone
-	e.stateAccess.Unlock()
-	e.cancelLoop()
-	err := E.Errors(e.client.Close(), e.device.Close())
-	if readLoopDone != nil {
-		<-readLoopDone
-	}
-	if authFormLoopDone != nil {
-		<-authFormLoopDone
-	}
-	if activeTransportLoopDone != nil {
-		<-activeTransportLoopDone
-	}
-	e.notifyStatusUpdated()
-	return err
 }
 
 func (e *Endpoint) InterfaceUpdated(ctx context.Context) {

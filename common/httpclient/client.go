@@ -31,6 +31,10 @@ func NewTransport(ctx context.Context, logger logger.ContextLogger, tag string, 
 	headers := options.Headers.Build()
 	host := headers.Get("Host")
 	headers.Del("Host")
+	var domainResolver string
+	if options.DomainResolver != nil {
+		domainResolver = options.DomainResolver.Server
+	}
 
 	var cheapRebuild bool
 	switch options.Engine {
@@ -40,10 +44,13 @@ func NewTransport(ctx context.Context, logger logger.ContextLogger, tag string, 
 			return nil, err
 		}
 		return &ManagedTransport{
-			dialer:  rawDialer,
-			headers: headers,
-			host:    host,
-			tag:     tag,
+			dialer:          rawDialer,
+			headers:         headers,
+			host:            host,
+			tag:             tag,
+			detour:          options.Detour,
+			domainResolver:  domainResolver,
+			defaultOutbound: options.DefaultOutbound,
 			factory: func() (innerTransport, error) {
 				return newAppleTransport(ctx, logger, rawDialer, options)
 			},
@@ -60,6 +67,8 @@ func NewTransport(ctx context.Context, logger logger.ContextLogger, tag string, 
 		Logger:               logger,
 		Options:              tlsOptions,
 		AllowEmptyServerName: true,
+		DomainResolver:       options.DomainResolver,
+		DirectResolver:       options.DirectResolver,
 	})
 	if err != nil {
 		return nil, err
@@ -69,11 +78,14 @@ func NewTransport(ctx context.Context, logger logger.ContextLogger, tag string, 
 		return nil, err
 	}
 	managedTransport := &ManagedTransport{
-		cheapRebuild: cheapRebuild,
-		dialer:       rawDialer,
-		headers:      headers,
-		host:         host,
-		tag:          tag,
+		cheapRebuild:    cheapRebuild,
+		dialer:          rawDialer,
+		headers:         headers,
+		host:            host,
+		tag:             tag,
+		detour:          options.Detour,
+		domainResolver:  domainResolver,
+		defaultOutbound: options.DefaultOutbound,
 		factory: func() (innerTransport, error) {
 			return newTransport(rawDialer, baseTLSConfig, options)
 		},

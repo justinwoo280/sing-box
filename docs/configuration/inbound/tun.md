@@ -88,9 +88,9 @@ icon: material/new-box
   "iproute2_table_index": 2022,
   "iproute2_rule_index": 9000,
   "auto_redirect": true,
-  "auto_redirect_input_mark": "0x2023",
-  "auto_redirect_output_mark": "0x2024",
-  "auto_redirect_reset_mark": "0x2025",
+  "auto_redirect_input_mark": "0x04000000",
+  "auto_redirect_output_mark": "0x08000000",
+  "auto_redirect_reset_mark": "0x10000000",
   "auto_redirect_nfqueue": 100,
   "auto_redirect_iproute2_fallback_rule_index": 32768,
   "exclude_mptcp": false,
@@ -183,9 +183,7 @@ icon: material/new-box
   ],
   "inet6_route_exclude_address": [
     "fc00::/7"
-  ],
-  ...
-  // Listen Fields
+  ]
 }
 ```
 
@@ -255,25 +253,22 @@ How DNS is handled on the TUN interface.
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `disabled` | Do not configure native DNS and do not hijack DNS traffic.                                                                                                 |
 | `native`   | Set the platform's native interface DNS where possible: per-interface DNS on Windows and Apple platforms, and `systemd-resolved` interface DNS on Linux.   |
-| `hijack`   | Same as `native`, with additional port 53 hijacking described below. Used by default.                                                                      |
+| `hijack`   | Same as `native`, with additional port 53 hijacking described below.                                                                                       |
+
+`hijack` is used by default when [`auto_route`](#auto_route) is enabled, otherwise `disabled` is used by default.
 
 `hijack` adds the following on top of `native`:
 
-*On Linux*: only DNS sent to non-local destinations can be intercepted.
-Traffic destined to addresses on the host's own interfaces (such as
-`127.0.0.53` or the host's LAN-side IP) is delivered through the kernel
-`local` routing table before any user rule applies, and `OUTPUT` NAT cannot
-redirect packets going through `lo`.
+*On Linux*: DNS sent to addresses on the host's own interfaces (such as
+`127.0.0.53` or the host's LAN-side IP) is not hijacked.
 
-- Without `auto_redirect`, an `iproute2` rule makes port 53 skip the `main`
-  table's specific-route lookup, forcing DNS that would otherwise be
-  delivered through a directly-attached subnet through the TUN. Destination
-  addresses are not rewritten.
-- With `auto_redirect`, an nftables rule DNATs port 53 traffic directly to
+- Without `auto_redirect`, port 53 traffic to directly-attached subnets is
+  also routed through the TUN.
+- With `auto_redirect`, port 53 traffic is redirected to
   [`dns_address`](#dns_address).
 
-*On Windows with [`strict_route`](#strict_route)*: a WFP filter blocks port
-53 traffic going through interfaces other than the TUN.
+*On Windows with [`strict_route`](#strict_route)*: port 53 traffic going
+through interfaces other than the TUN is blocked.
 
 #### dns_address
 
@@ -281,15 +276,12 @@ redirect packets going through `lo`.
 
 List of DNS server addresses used by [`dns_mode`](#dns_mode).
 
-When unset, sing-box derives one address per family by taking the next IP after
-the first IPv4/IPv6 entry in [`address`](#address). Connections toward those
-derived addresses are additionally hijacked into the sing-box DNS module,
-equivalent to a [`hijack-dns`](/configuration/route/rule_action/#hijack-dns)
-route action; this preserves the behaviour from before this option was added.
+When unset, the next address after the first IPv4 and IPv6 entry in
+[`address`](#address) is used, and connections to it are handled as a
+[`hijack-dns`](/configuration/route/rule_action/#hijack-dns) route action.
 
-When set, this auto-hijack is not applied; configure an explicit
-[`hijack-dns`](/configuration/route/rule_action/#hijack-dns) route rule if the
-behaviour is still required.
+When set, configure a [`hijack-dns`](/configuration/route/rule_action/#hijack-dns)
+route rule to handle DNS traffic to these addresses.
 
 #### gso
 
@@ -369,7 +361,7 @@ Conflict with `route.default_mark` and `[dialOptions].routing_mark`.
 
 Connection input mark used by `auto_redirect`.
 
-`0x2023` is used by default.
+`0x04000000` is used by default.
 
 #### auto_redirect_output_mark
 
@@ -377,7 +369,7 @@ Connection input mark used by `auto_redirect`.
 
 Connection output mark used by `auto_redirect`.
 
-`0x2024` is used by default.
+`0x08000000` is used by default.
 
 #### auto_redirect_reset_mark
 
@@ -385,7 +377,7 @@ Connection output mark used by `auto_redirect`.
 
 Connection reset mark used by `auto_redirect` pre-matching.
 
-`0x2025` is used by default.
+`0x10000000` is used by default.
 
 #### auto_redirect_nfqueue
 
@@ -520,9 +512,9 @@ Exclude custom routes when `auto_route` is enabled.
     Add the destination IP CIDR rules in the specified rule-sets to routes, equivalent to adding to `route_address`.
     Unmatched traffic will bypass the sing-box routes.
 
-    Note that it **doesn't work on the Android graphical client** due to
-    the Android VpnService not being able to handle a large number of routes (DeadSystemException),
-    but otherwise it works fine on all command line clients and Apple platforms.
+    Note that it **doesn't work on the Android and Apple graphical clients**
+    as they cannot handle a large number of routes,
+    but otherwise it works fine on all command line clients and the Linux and Windows graphical clients.
 
 #### route_exclude_address_set
 
@@ -544,19 +536,16 @@ Exclude custom routes when `auto_route` is enabled.
     Add the destination IP CIDR rules in the specified rule-sets to routes, equivalent to adding to `route_exclude_address`.
     Matched traffic will bypass the sing-box routes.
 
-    Note that it **doesn't work on the Android graphical client** due to
-    the Android VpnService not being able to handle a large number of routes (DeadSystemException),
-    but otherwise it works fine on all command line clients and Apple platforms.
+    Note that it **doesn't work on the Android and Apple graphical clients**
+    as they cannot handle a large number of routes,
+    but otherwise it works fine on all command line clients and the Linux and Windows graphical clients.
 
 #### endpoint_independent_nat
 
-!!! info ""
+This option has had no effect since sing-box 1.11.0 and can be removed from the configuration.
 
-    This item is only available on the gvisor stack, other stacks are endpoint-independent NAT by default.
-
-Enable endpoint-independent NAT.
-
-Performance may degrade slightly, so it is not recommended to enable on when it is not needed.
+Since sing-box 1.14.0, use [UDP NAT fields](/configuration/shared/udp-nat/)
+to customize the mapping and filtering behavior.
 
 #### stack
 
@@ -712,7 +701,3 @@ Hostnames that use the HTTP proxy.
 ### UDP NAT Fields
 
 See [UDP NAT Fields](/configuration/shared/udp-nat/) for details.
-
-### Listen Fields
-
-See [Listen Fields](/configuration/shared/listen/) for details.
