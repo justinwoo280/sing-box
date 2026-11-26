@@ -33,14 +33,22 @@ dev revision includes the maintenance main line and the packet-offload and
 memory-limit APIs needed by the Go stack. Published lwIP archives remain at
 `c447d5af480c` with bindings `0dca048bf681`.
 
-Cronet retains the published Browser-capable fork wrapper/native pair
-`9586d9103f19`, with `all@49cf5150931d`. Its Chromium 154 Browser extensions
-are required by this fork. Upstream's `ccefd17767e7` wrapper and
-`2767273ce7ab` archives cannot be substituted directly: they lack these custom
-APIs. Upstream's newer custom-socket worker scheduling, native certificate
-blocklist and Go C-header zero-initialization changes still require a separate
-Cronet reconciliation and matching publication. Updating the sing-box baseline
-does not claim those Cronet native fixes are included.
+Cronet uses the published Browser-capable fork wrapper and native modules at
+`v0.0.0-20261126220904-c67c5dc12708`, paired with
+`all@v0.0.0-20261126220912-ffdf7fe53517`. They were generated from wrapper
+`4d330abc1184ced5a21b20cdc011795acf615fb8` and native
+`e214d4134b35a0f0e362a68d151cbcb39f289ef2` after full publication run
+[45896719250](https://github.com/justinwoo280/cronet-go/actions/runs/45896719250)
+passed the native, desktop integration and Android runtime gates.
+
+Selective upstream backports cover asynchronous custom-socket scheduling,
+dialer-owned Naive address resolution and reset cancellation, zero-initialized
+Go C-header arrays, BSD UDP EOF handling and Windows TCP metrics synchronization.
+Browser REALITY/Strict ECH, explicit ALPN/H3 and empty-Host/SNI behavior remain
+part of the fork. Chrome Root Store v45 and the eMudhra SPKI blocklist were
+already present. The actual native source remains
+`naiveproxy-REALITY/naiveproxy:cronet-go-chromium-154`, with SagerNet fixes
+integrated individually.
 
 ## Validation
 
