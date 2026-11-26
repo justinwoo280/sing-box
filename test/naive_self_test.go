@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/netip"
 	"os"
 	"strings"
@@ -330,11 +331,24 @@ func TestNaiveSelfInsecureConcurrency(t *testing.T) {
 	// Verify NetLog contains multiple independent HTTP/2 sessions
 	logContent, err := os.ReadFile(netLogPath)
 	require.NoError(t, err)
-	logStr := string(logContent)
-
-	// Count HTTP2_SESSION_INITIALIZED events to verify connection pool isolation
-	// NetLog stores event types as numeric IDs, HTTP2_SESSION_INITIALIZED = 249
-	sessionCount := strings.Count(logStr, `"type":249`)
+	var netLog struct {
+		Constants struct {
+			LogEventTypes map[string]int `json:"logEventTypes"`
+		} `json:"constants"`
+		Events []struct {
+			Type int `json:"type"`
+		} `json:"events"`
+	}
+	require.NoError(t, json.Unmarshal(logContent, &netLog))
+	// Chromium assigns new numeric IDs as its NetLog event list evolves.
+	sessionType, ok := netLog.Constants.LogEventTypes["HTTP2_SESSION_INITIALIZED"]
+	require.True(t, ok, "HTTP2_SESSION_INITIALIZED not in NetLog constants")
+	var sessionCount int
+	for _, event := range netLog.Events {
+		if event.Type == sessionType {
+			sessionCount++
+		}
+	}
 	require.GreaterOrEqual(t, sessionCount, 3,
 		"Expected at least 3 HTTP/2 sessions with insecure_concurrency=3. NetLog: %s", netLogPath)
 }
@@ -443,6 +457,12 @@ func TestNaiveSelfQUICCongestionControl(t *testing.T) {
 			caPem, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 			caPemContent, err := os.ReadFile(caPem)
 			require.NoError(t, err)
+			serverCongestionControl := tc.congestionControl
+			if serverCongestionControl == "bbr2" {
+				// BBRv2 is a Cronet client option; the quic-go server supports
+				// bbr/cubic/reno and need not use the client's algorithm.
+				serverCongestionControl = "bbr"
+			}
 			startInstance(t, option.Options{
 				Inbounds: []option.Inbound{
 					{
@@ -470,7 +490,7 @@ func TestNaiveSelfQUICCongestionControl(t *testing.T) {
 								},
 							},
 							Network:               network.NetworkUDP,
-							QUICCongestionControl: tc.congestionControl,
+							QUICCongestionControl: serverCongestionControl,
 							InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{
 								TLS: &option.InboundTLSOptions{
 									Enabled:         true,
