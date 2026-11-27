@@ -46,7 +46,7 @@ jobs:
       - name: Regression tests
         run: go test -race -count=1 ./protocol/tun ./protocol/bridge ./route
       - name: Build all enabled transports
-        run: CGO_ENABLED=0 go build -tags "$(cat release/DEFAULT_BUILD_TAGS_OTHERS),with_cronet,with_lwip,with_purego" ./...
+        run: CGO_ENABLED=0 go build -ldflags "$(cat release/LDFLAGS)" -tags "$(cat release/DEFAULT_BUILD_TAGS_OTHERS),with_cronet,with_lwip,with_purego" ./...
       - name: Validate release scripts
         run: bash -n release/build-native.sh release/package-native.sh release/zig-cc.sh
 
