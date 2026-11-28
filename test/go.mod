@@ -85,43 +85,43 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20260220084031-5adc3eb26f91 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.1 // indirect
-	github.com/justinwoo280/sing-lwip v0.0.0-20261110151649-0dca048bf681 // indirect
-	github.com/justinwoo280/sing-lwip/lib/android_386 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/android_amd64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/android_arm v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/android_arm64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/darwin_amd64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/darwin_arm64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/freebsd_amd64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/freebsd_arm64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/ios_amd64_simulator v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/ios_arm64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/ios_arm64_simulator v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_386_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_386_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_amd64_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_amd64_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_arm64_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_arm64_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_arm_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_arm_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_loong64_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_loong64_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_mips64le_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_mipsle_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_mipsle_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_ppc64le_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_ppc64le_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_riscv64_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_riscv64_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_s390x_gnu v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/linux_s390x_musl v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/tvos_amd64_simulator v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/tvos_arm64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/tvos_arm64_simulator v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/windows_386 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/windows_amd64 v0.0.0-20261110151646-c447d5af480c // indirect
-	github.com/justinwoo280/sing-lwip/lib/windows_arm64 v0.0.0-20261110151646-c447d5af480c // indirect
+	github.com/justinwoo280/sing-lwip v0.0.0-20261127171519-35273e959645 // indirect
+	github.com/justinwoo280/sing-lwip/lib/android_386 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/android_amd64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/android_arm v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/android_arm64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/darwin_amd64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/darwin_arm64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/freebsd_amd64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/freebsd_arm64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/ios_amd64_simulator v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/ios_arm64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/ios_arm64_simulator v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_386_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_386_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_amd64_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_amd64_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_arm64_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_arm64_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_arm_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_arm_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_loong64_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_loong64_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_mips64le_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_mipsle_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_mipsle_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_ppc64le_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_ppc64le_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_riscv64_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_riscv64_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_s390x_gnu v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/linux_s390x_musl v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/tvos_amd64_simulator v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/tvos_arm64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/tvos_arm64_simulator v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/windows_386 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/windows_amd64 v0.0.0-20261127171514-f242056c4121 // indirect
+	github.com/justinwoo280/sing-lwip/lib/windows_arm64 v0.0.0-20261127171514-f242056c4121 // indirect
 	github.com/justinwoo280/sing-xhttp v0.1.7-0.20261123151222-4d9b1bf62aa1 // indirect
 	github.com/keybase/go-keychain v0.0.1 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
@@ -291,4 +291,4 @@ replace (
 	github.com/sagernet/cronet-go/lib/windows_arm64 => github.com/justinwoo280/cronet-go/lib/windows_arm64 v0.0.0-20261126220904-c67c5dc12708
 )
 
-replace github.com/sagernet/sing-tun => github.com/justinwoo280/sing-tun v0.9.7-0.20261126133200-ff0e24508fc9
+replace github.com/sagernet/sing-tun => github.com/justinwoo280/sing-tun v0.9.7-0.20261128112449-8911c4747129
